@@ -1,0 +1,48 @@
+[build-system]
+# https://setuptools.readthedocs.io/en/latest/setuptools.html#setup-cfg-only-projects
+requires = [
+  "setuptools >= 40.9.0",
+  "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'biodenoising'
+description = "Animal vocalization denoising. Supports offline and streaming denoising. Animal-domain fork of Facebook speech denoiser https://github.com/facebookresearch/denoiser. "
+
+requires-python = '>=3.8.0'
+version = "0.1.0"
+authors = [
+  { name="Marius Miron", email="info@mariusmiron.com" },
+]
+readme = "README.md"
+dependencies = ['julius', 'numpy>=1.19', 'six', 'sounddevice>=0.4', 'torch>=1.5', 'torchaudio>=0.5', 'openunmix', 'asteroid','einops', 'omegaconf==1.4.1', 'noisereduce']
+
+classifiers=[
+        'Topic :: Multimedia :: Sound/Audio :: Analysis',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        "Intended Audience :: Information Technology",
+        "Intended Audience :: Science/Research",
+        "Intended Audience :: System Administrators",
+        "Intended Audience :: Telecommunications Industry",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+    ]
+license = { file="LICENSE" }
+
+[project.urls]
+Homepage = 'https://github.com/earthspecies/biodenoising'
+Issues = 'https://github.com/earthspecies/biodenoising/issues'
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["biodenoising","biodenoising.denoiser","biodenoising.datasets","biodenoising.conf"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml"]
+biodenoising.conf = ["*.yaml"]
