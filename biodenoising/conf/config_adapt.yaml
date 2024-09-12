@@ -1,0 +1,143 @@
+dset:
+  low_snr: -5
+  high_snr: 10
+
+# Dataset related
+full_size: 1000000
+nsources: 1
+sample_rate: 16000
+segment: 4 # in seconds,
+stride: 1. # in seconds, how much to stride between training examples
+pad: true   # if training sample is too short, pad it
+epoch_size: 1000  # number of samples per epoch
+exclude: #data to exclude
+exclude_noise: #noise to exclude
+repeat_prob: 0.  # probability to repeat a short sample
+random_repeat: false # repeat a short sample several random times 
+random_pad: false # pad a short sample with random silence intervals
+silence_prob: 0.  # probability to add silence
+noise_prob: 0.  # probability to add noise
+eval_window_size: 0 # evaluation window size in samples
+normalize: false # normalize the clean signal
+random_gain: false # random gain
+low_gain: 0.5 # low gain
+high_gain: 1. # high gain
+
+# Dataset Augmentation
+remix: false   # remix noise and clean
+bandmask: 0.   # drop at most this fraction of freqs in mel scale
+shift: 0.  # random shift, number of samples
+shift_same: false   # shift noise and clean by the same amount
+revecho: 0.  # add reverb like augment
+timescale: 0.  # random time scaling
+flip: 0. # random flip
+# remix: false   # remix noise and clean
+# bandmask: 0.2   # drop at most this fraction of freqs in mel scale
+# shift: 64000    # random shift, number of samples
+# shift_same: false   # shift noise and clean by the same amount
+# revecho: 1  # add reverb like augment
+# timescale: 4  # random time scaling
+# flip: 0.1  # random flip
+
+# Logging and printing, and does not impact training
+num_prints: 5
+device: cuda
+num_workers: 10
+show: 0   # just show the model and its size and exit
+
+# Checkpointing, by default automatically load last checkpoint
+checkpoint: true
+continue_from: '' # Path the a checkpoint.th file to start from.
+                  # this is not used in the name of the experiment!
+                  # so use a dummy=something not to mixup experiments.
+continue_best: false  # continue from best, not last state if continue_from is set.
+continue_pretrained:   # use either dns48, dns64 or master64 to fine tune from pretrained-model
+restart: true # Ignore existing checkpoints
+checkpoint_file: checkpoint.th
+best_file: best.th  # will contain only best model at any point
+history_file: history.json
+samples_dir: samples
+save_again: false  # if true, only load checkpoint and save again, useful to reexport best.th
+model_path: ''
+biodenoising16k_dns48: false
+
+# Other stuff
+seed: 0
+dummy:  # use this if you want twice the same exp, with a different name
+
+# Evaluation stuff
+pesq: True # compute pesq?
+eval_every: 1  # compute test metrics every so epochs
+dry: 0.  # dry/wet knob value at eval
+streaming: False  # use streaming evaluation for Demucs
+
+# Optimization related
+optim: adam
+swa_scheduler: false
+swa_start: 1
+lr: 1e-6 
+#lr: 1e-5 ### sisdr loss
+#lr: 1e-6 ### l1 loss
+weight_decay: 0
+beta1: 0.9
+beta2: 0.999
+loss: l1
+stft_loss: False
+stft_sc_factor: .5
+stft_mag_factor: .5
+stft_mask: False
+stft_mask_threshold: -60
+epochs: 20
+batch_size: 16
+clip_grad_norm: 10
+clamp_loss: 30
+rms_loss: 0
+
+# Teacher-student experiment
+teacher_student: False
+bootstrap_remix: False
+rescale_to_input_mixture: False
+apply_mixture_consistency: False
+n_epochs_teacher_update: 1
+teacher_momentum: 0.01
+other_noise: True
+
+# Models
+model: biodenoising16k_dns48 
+demucs:
+  chin: 1
+  chout: 1
+  hidden: 48
+  max_hidden: 10000
+  causal: true
+  glu: true
+  depth: 5
+  kernel_size: 8
+  stride: 4
+  normalize: true
+  resample: 4
+  growth: 2
+  rescale: 0.1
+  noisereduce: False
+  nr_mode: 'concat'
+cleanunet:
+  channels_input: 1
+  channels_output: 1
+  channels_H: 64
+  max_H: 768
+  encoder_n_layers: 8
+  kernel_size: 4
+  stride: 2
+  tsfm_n_layers: 5
+  tsfm_n_head: 8
+  tsfm_d_model: 512
+  tsfm_d_inner: 2048
+
+# Experiment launching, distributed
+ddp: false
+ddp_backend: nccl
+rendezvous_file: ./rendezvous
+
+# Internal config, don't set manually
+rank:
+world_size:

@@ -1,0 +1,12 @@
+include *.md
+include LICENSE
+include setup.cfg
+include *.txt
+include train.py 
+include prepare_experiments.py 
+include generate_training.py 
+include denoise.py 
+include evaluate.py 
+include plot.py 
+recursive-include datasets *
+recursive-include scripts *

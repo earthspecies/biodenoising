@@ -1,0 +1,10 @@
+julius
+numpy
+einops
+openunmix
+asteroid
+sounddevice
+torchaudio
+torch
+omegaconf==1.4.1
+noisereduce
