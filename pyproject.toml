@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = 'biodenoising'
-description = "Animal vocalization denoising. Supports offline and streaming denoising. Animal-domain fork of Facebook speech denoiser https://github.com/facebookresearch/denoiser. "
+description = "Animal vocalization denoising"
 
 requires-python = '>=3.8.0'
 version = "0.1.0"
