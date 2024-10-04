@@ -8,7 +8,7 @@ The proposed model is based on the Demucs architecture, originally proposed for 
 
 ## Colab
 
-If you want to play with the pretrained model inside colab for instance, start from this [Colab Example for Biodenoising](https://colab.research.google.com/drive/1Too3cnMpyKaLQ0vPwDw7jUx0Y3eXm2IA?usp=sharing).
+If you want to play with the pretrained model inside colab for instance, start from this [Colab Example for Biodenoising](https://colab.research.google.com/drive/1OTZu44OJ72foVUMGRMez-9nuiKsSb_Fo?usp=sharing).
 
 ## Installation
 

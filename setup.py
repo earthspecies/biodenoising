@@ -8,9 +8,7 @@ from setuptools import setup, find_packages
 
 NAME = 'biodenoising'
 DESCRIPTION = (
-    'Animal vocalization denoising.'
-    ' Supports offline and streaming denoising.'
-    ' Animal-domain fork of Facebook speech denoiser https://github.com/facebookresearch/denoiser.')
+    'Animal vocalization denoising')
 
 URL = 'https://github.com/earthspecies/biodenoising'
 EMAIL = 'info@mariusmiron.com'
