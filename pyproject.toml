@@ -45,4 +45,3 @@ include = ["biodenoising","biodenoising.denoiser","biodenoising.datasets","biode
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
-biodenoising.conf = ["*.yaml"]
