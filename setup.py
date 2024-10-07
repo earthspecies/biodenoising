@@ -28,7 +28,9 @@ REQUIRED = [
     'openunmix',
     'einops',
     'omegaconf==1.4.1',
-    'noisereduce'
+    'noisereduce',
+    'scikit-fuzzy',
+    'prosemble'
 ]
 
 REQUIRED_LINKS = [

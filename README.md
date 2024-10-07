@@ -6,9 +6,11 @@ Check the [biodenoising web page](https://mariusmiron.com/research/biodenoising)
 
 The proposed model is based on the Demucs architecture, originally proposed for music source-separation and [real-time speech enhancement](https://github.com/facebook/denoiser). 
 
+We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
+
 ## Colab
 
-If you want to play with the pretrained model inside colab for instance, start from this [Colab Example for Biodenoising](https://colab.research.google.com/drive/1OTZu44OJ72foVUMGRMez-9nuiKsSb_Fo?usp=sharing).
+If you want to play with the pretrained model inside colab for instance, start from this [Colab Example for Biodenoising](https://colab.research.google.com/drive/1Gc1tCe0MqAabViIgA8zGWm5KLVrEbRzg?usp=sharing).
 
 ## Installation
 
@@ -18,7 +20,7 @@ First, install Python >= 3.8 (recommended with miniconda).
 
 Just run
 ```bash
-pip install biodenosing
+pip install biodenoising
 ```
 
 #### Development
@@ -27,8 +29,8 @@ Clone this repository and install the dependencies. We recommend using
 a fresh virtualenv or Conda environment.
 
 ```bash
-git clone https://github.com/earthspecies/biodenoising-inference-internal
-cd biodenoising-inference-internal
+git clone https://github.com/earthspecies/biodenoising
+cd biodenoising
 pip install -r requirements.txt  
 ```
 
@@ -62,10 +64,6 @@ pacmd update-sink-proplist denoiser device.description=denoiser
 This will add a `Monitor of Null Output` to the list of microphones to use. Select it as input in your software. 
 - Launch the `pavucontrol` tool. In the _Playback_ tab, after launching 
 `python -m biodenoising.denoiser.live --out INDEX_OR_NAME_OF_LOOPBACK_IFACE` and the software you want to denoise for (here an in-browser call), you should see both applications. For *denoiser* interface as Playback destination which will output the processed audio stream on the sink we previously created.
-<p align="center">
-<img src="./img/pavucontrol.png" alt="pavucontrol window and parameters to use."
-width="50%"></p>
-
 
 ### Other platforms
 
@@ -172,7 +170,15 @@ Feel free to explore different settings, i.e. bigger models and more CPU-cores.
 ## Citation
 If you use the code in your research, then please cite it as:
 ```
-
+@misc{miron2024biodenoisinganimalvocalizationdenoising,
+      title={Biodenoising: animal vocalization denoising without access to clean data}, 
+      author={Marius Miron and Sara Keen and Jen-Yu Liu and Benjamin Hoffman and Masato Hagiwara and Olivier Pietquin and Felix Effenberger and Maddie Cusimano},
+      year={2024},
+      eprint={2410.03427},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2410.03427}, 
+}
 ```
 
 ## License
