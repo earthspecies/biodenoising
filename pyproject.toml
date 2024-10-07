@@ -16,7 +16,7 @@ authors = [
   { name="Marius Miron", email="info@mariusmiron.com" },
 ]
 readme = "README.md"
-dependencies = ['julius', 'numpy>=1.19', 'six', 'sounddevice>=0.4', 'torch>=1.5', 'torchaudio>=0.5', 'openunmix', 'asteroid','einops', 'omegaconf==1.4.1', 'noisereduce']
+dependencies = ['julius', 'numpy>=1.19', 'six', 'sounddevice>=0.4', 'torch>=1.5', 'torchaudio>=0.5', 'openunmix', 'asteroid','einops', 'omegaconf==1.4.1', 'noisereduce','scikit-fuzzy','prosemble']
 
 classifiers=[
         'Topic :: Multimedia :: Sound/Audio :: Analysis',
