@@ -1,3 +1,5 @@
+![Biodenoising](biodenoising.jpg "biodenoising")
+
 ## Introduction 
 
 We present Biodenoising, a new method for animal vocalization denoising that does not require access to clean data. There are two core ideas behind Biodenoising:
