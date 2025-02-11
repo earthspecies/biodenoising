@@ -1,23 +1,3 @@
----
-layout: page
-#
-# Content
-#
-subheadline: "Unsupervised animal vocalization denoising"
-sidebar: right
-title: "Biodenoising"
-teaser: "how to denoise animal vocalizations without clean data?"
-permalink: "/research/biodenoising/"
-categories:
-  -
-tags:
-  - bioacoustics, denoising
-header:
-   image_fullwidth: "whale.png"
-mediaplayer: true
-
----
-
 ## Introduction 
 
 ![biodenoising]({{ site.url }}/images/biodenoising.jpg)
