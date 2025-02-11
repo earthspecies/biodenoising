@@ -6,17 +6,14 @@ We present Biodenoising, a new method for animal vocalization denoising that doe
 
 There is a eloquent video about how these audio patterns work for whales and birds.
 
-    <iframe width="560" height="315"
-src="http://www.youtube.com/watch?v=M5OCCuCIMbA" 
-frameborder="0" 
-allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" 
-allowfullscreen></iframe>
+[![](https://markdown-videos-api.jorgenkh.no/youtube/M5OCCuCIMbA)](https://youtu.be/M5OCCuCIMbA)
 
-We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
+
+The paper is accepted at [ICASSP 2025](https://2025.ieeeicassp.org/). We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
 
 ```Marius Miron, Sara Keen, Jen-Yu Liu, Benjamin Hoffman, Masato Hagiwara, Olivier Pietquin, Felix Effenberger, Maddie Cusimano, "Biodenoising: animal vocalization denoising without access to clean data```
 
-Along with the pre-print, we publish two Python pip-installable libraries 'biodenoising', 'biodenoising-inference', and 'biodenoising-datasets' that can be used to denoise animal vocalizations and download the datasets. 
+Along with the pre-print, we publish two Python pip-installable libraries `biodenoising`, `biodenoising-inference`, and `biodenoising-datasets` that can be used to denoise animal vocalizations and download the datasets. 
 
 | [Github](https://github.com/earthspecies/biodenoising) | [Github inference](https://github.com/earthspecies/biodenoising-inference) | [Github Datasets](https://github.com/earthspecies/biodenoising-datasets) | [Colab](https://colab.research.google.com/drive/1Gc1tCe0MqAabViIgA8zGWm5KLVrEbRzg?usp=sharing) |
 
@@ -119,15 +116,15 @@ My favorite recording is the one of a bowhead whale from the Watkins Marine Mamm
 
 ## Bibtex 
 ```
-@misc\{miron2024biodenoisinganimalvocalizationdenoising,
+@misc{miron2024biodenoisinganimalvocalizationdenoising,
       title={Biodenoising: animal vocalization denoising without access to clean data}, 
-      author={Marius Miron and Sara Keen and Jen-Yu Liu and Benjamin Hoffman and Masato Hagiwara and Olivier Pietquin and Felix Effenberger and Maddie Cusimano\},
-      year=\{2024\},
-      eprint=\{2410.03427\},
-      archivePrefix=\{arXiv\},
-      primaryClass=\{cs.SD\},
-      url=\{https://arxiv.org/abs/2410.03427\}, 
-\}
+      author={Marius Miron and Sara Keen and Jen-Yu Liu and Benjamin Hoffman and Masato Hagiwara and Olivier Pietquin and Felix Effenberger and Maddie Cusimano},
+      year={2024},
+      eprint={2410.03427},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2410.03427}, 
+}
 ```
 
  [1]: https://www.sciencedirect.com/science/article/abs/pii/S0003347207002722#:~:text=In%201965%2C%20Melba%20and%20David,et%20al.%2C%201990
