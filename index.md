@@ -1,20 +1,20 @@
 ## Introduction 
 
-![biodenoising]({{ site.url }}/images/biodenoising.jpg)
-
 We present Biodenoising, a new method for animal vocalization denoising that does not require access to clean data. There are two core ideas behind Biodenoising:
 - We leverage existing speech enhancement models: there is no need to start from scratch. Speech enhancement models have seen a lot of data and have some knowledge about patterns in audio time series. 
 - Following the same logic, there is no need to train a separate model for each animal dataset. Since lots of signal characteristics are replicated at different scales and frequencies, a model that has seen more diverse data can be more robust to unseen conditions and generalize better.
 
 There is a eloquent video about how these audio patterns work for whales and birds.
 
-<video width="640" height="360" id="player1" preload="none">
-  <source type="video/youtube" src="http://www.youtube.com/watch?v=M5OCCuCIMbA" />
-</video>
+    <iframe width="560" height="315"
+src="http://www.youtube.com/watch?v=M5OCCuCIMbA" 
+frameborder="0" 
+allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" 
+allowfullscreen></iframe>
 
 We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
 
-{% include alert text='Marius Miron, Sara Keen, Jen-Yu Liu, Benjamin Hoffman, Masato Hagiwara, Olivier Pietquin, Felix Effenberger, Maddie Cusimano, "Biodenoising: animal vocalization denoising without access to clean data"' %}
+```Marius Miron, Sara Keen, Jen-Yu Liu, Benjamin Hoffman, Masato Hagiwara, Olivier Pietquin, Felix Effenberger, Maddie Cusimano, "Biodenoising: animal vocalization denoising without access to clean data```
 
 Along with the pre-print, we publish two Python pip-installable libraries 'biodenoising', 'biodenoising-inference', and 'biodenoising-datasets' that can be used to denoise animal vocalizations and download the datasets. 
 
@@ -119,7 +119,7 @@ My favorite recording is the one of a bowhead whale from the Watkins Marine Mamm
 | South-Alaska humpback whale | 114.85 | underwater |   yes   |  no    | [link][6]  |  various    |
 
 ## Bibtex 
-{% include alert text='
+```
 @misc\{miron2024biodenoisinganimalvocalizationdenoising,
       title={Biodenoising: animal vocalization denoising without access to clean data}, 
       author={Marius Miron and Sara Keen and Jen-Yu Liu and Benjamin Hoffman and Masato Hagiwara and Olivier Pietquin and Felix Effenberger and Maddie Cusimano\},
@@ -129,7 +129,7 @@ My favorite recording is the one of a bowhead whale from the Watkins Marine Mamm
       primaryClass=\{cs.SD\},
       url=\{https://arxiv.org/abs/2410.03427\}, 
 \}
-"' %}
+```
 
  [1]: https://www.sciencedirect.com/science/article/abs/pii/S0003347207002722#:~:text=In%201965%2C%20Melba%20and%20David,et%20al.%2C%201990
  [2]: https://zenodo.org/record/7997739
