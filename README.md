@@ -2,7 +2,7 @@
 
 Here we provide the inference and training code. If you solely plan to do inference go to the following [github repo](https://github.com/earthspecies/biodenoising-inference)
 
-Check the [biodenoising web page](https://mariusmiron.com/research/biodenoising) for demos and more info. 
+Check the [biodenoising web page](https://earthspecies.github.io/biodenoising/) for demos and more info. 
 
 The proposed model is based on the Demucs architecture, originally proposed for music source-separation and [real-time speech enhancement](https://github.com/facebook/denoiser). 
 
