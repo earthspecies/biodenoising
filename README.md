@@ -80,7 +80,7 @@ Note that on Windows you will need to replace `python` by `python.exe`.
 
 
 ### Troubleshooting bad quality in separation
-This is from the original denoiser implementation: 
+Biodenoising inherits the drawbacks of the denoiser implementation: 
 
 `denoiser` can introduce distortions for very high level of noises.
 Audio can become crunchy if your computer is not fast enough to process audio in real time.
@@ -127,21 +127,21 @@ usage: biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --dns48 ]
 Speech enhancement using biodenoising - Generate enhanced files
 
 optional arguments:
-  -h, --help            show this help message and exit
+  -h, --help                  show this help message and exit
   -m MODEL_PATH, --model_path MODEL_PATH
-                        Path to local trained model.
-  --dns48               Use pre-trained real time H=48 model trained on biodenoising-datasets.
+                              Path to local trained model.
+  --biodenoising16k_dns48     Use pre-trained real time H=48 model trained on biodenoising-datasets.
   --device DEVICE
-  --dry DRY             dry/wet knob coefficient. 0 is only input signal, 1
-                        only denoised.
+  --dry DRY                   dry/wet knob coefficient. 0 is only input signal, 1
+                              only denoised.
   --num_workers NUM_WORKERS
-  --streaming           true streaming evaluation for biodenoising
-  --output OUT_DIR     directory putting enhanced wav files
+  --streaming                 true streaming evaluation for biodenoising
+  --output OUT_DIR            directory putting enhanced wav files
   --batch_size BATCH_SIZE
-                        batch size
-  -v, --verbose         more loggging
+                              batch size
+  -v, --verbose               more loggging
   --input NOISY_DIR
-                        directory including noisy wav files
+                              directory including noisy wav files
 ```
 
 ## Online Evaluation
