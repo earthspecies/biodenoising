@@ -1,5 +1,5 @@
 dset:
-  low_snr: -5
+  low_snr: -10
   high_snr: 10
 
 # Dataset related
@@ -15,13 +15,14 @@ exclude_noise: #noise to exclude
 repeat_prob: 0.  # probability to repeat a short sample
 random_repeat: false # repeat a short sample several random times 
 random_pad: false # pad a short sample with random silence intervals
-silence_prob: 0.  # probability to add silence
+silence_prob: 0.2  # probability to add silence
 noise_prob: 0.  # probability to add noise
 eval_window_size: 0 # evaluation window size in samples
-normalize: false # normalize the clean signal
-random_gain: false # random gain
-low_gain: 0.5 # low gain
+normalize: true # normalize the clean signal
+random_gain: True # random gain
+low_gain: 0.1 # low gain
 high_gain: 1. # high gain
+parallel_noise: False # mix with noise from the same file -> for domain adaptation
 
 # Dataset Augmentation
 remix: false   # remix noise and clean
@@ -29,15 +30,9 @@ bandmask: 0.   # drop at most this fraction of freqs in mel scale
 shift: 0.  # random shift, number of samples
 shift_same: false   # shift noise and clean by the same amount
 revecho: 0.  # add reverb like augment
-timescale: 0.  # random time scaling
+timescale: 0.2  # random time scaling
 flip: 0. # random flip
-# remix: false   # remix noise and clean
-# bandmask: 0.2   # drop at most this fraction of freqs in mel scale
-# shift: 64000    # random shift, number of samples
-# shift_same: false   # shift noise and clean by the same amount
-# revecho: 1  # add reverb like augment
-# timescale: 4  # random time scaling
-# flip: 0.1  # random flip
+mixup: 0.99 # mixup
 
 # Logging and printing, and does not impact training
 num_prints: 5
@@ -87,7 +82,7 @@ stft_sc_factor: .5
 stft_mag_factor: .5
 stft_mask: False
 stft_mask_threshold: -60
-epochs: 20
+epochs: 30
 batch_size: 16
 clip_grad_norm: 10
 clamp_loss: 30

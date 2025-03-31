@@ -72,6 +72,28 @@ def save_wavs(estimates, filenames, out_dir, version='', sr=16_000):
 def write(wav, filename, sr=16_000):
     torchaudio.save(filename, wav.cpu(), sr)
 
+def enhance_noise(noise, estimate):
+    squeeze=False
+    if noise.ndim == 3 and estimate.ndim == 3:
+        noise = noise.squeeze(0)
+        estimate = estimate.squeeze(0)
+        squeeze=True
+    ### compute magnitude spectrogram
+    window = torch.hann_window(1024).to(noise.device)
+    stft_audio = torch.stft(estimate, n_fft=1024, hop_length=512, win_length=1024, window=window, center=True, return_complex=True)
+    stft_noise = torch.stft(noise, n_fft=1024, hop_length=512, win_length=1024, window=window, center=True, return_complex=True)
+    pspec_audio = torch.abs(stft_audio)**2
+    pspec_noise = torch.abs(stft_noise)**2
+    mask = pspec_audio < pspec_noise
+    #### inverse transform
+    phase_noise = torch.angle(stft_noise)
+    pspec_noise = torch.abs(stft_noise) * mask
+    #### build a complex spectrogram
+    stft_noise = pspec_noise * torch.exp(1j * phase_noise)
+    noise = torch.istft(stft_noise, n_fft=1024, hop_length=512, win_length=1024, window=window, center=True)
+    if squeeze:
+        noise = noise.unsqueeze(0)
+    return noise
 
 def get_dataset(noisy_dir, sample_rate, channels):
     if noisy_dir:
@@ -162,12 +184,22 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
         ### remove low frequency artifacts
         estimate = torch.from_numpy(highpass(estimate.to('cpu').numpy(), sample_rate)).to(args.device).float()
     
+    csv_path = os.path.join(out_subdir,args.experiment+'_detection')
+    os.makedirs(csv_path, exist_ok=True)
     full_estimate_noise = noisy_signals - estimate
     if args.transform == 'none':
-        peaks, norms = get_peaks(estimate.to('cpu').numpy().squeeze(), sample_rate, peak_height=args.peak_height)
+        norms, start_end = get_start_end(estimate.to('cpu').numpy().squeeze(), sample_rate)
         res = []
         res_noise = []
-        if len(peaks) > 0:
+        if len(start_end) > 0:
+            ### save csv
+            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+            with open(filename, 'w') as f:
+                f.write('start,end,rms\n')
+                for i in range(len(start_end)):
+                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+    
+            ### save wav
             noise = original_noisy_signals-estimate
             if args.noise_dir is None:
                 for i in range(3):
@@ -175,21 +207,28 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                     noise = noise - signal
                 noise = 3 * noise  
                 noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-        
+                if args.noisy_estimate:
+                    noise = enhance_noise(noise, estimate)  
+                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
+                    res_noise.append([allfnoise[0],1., out_subdir])
             if args.revecho > 0:
                 estimate = revecho(torch.stack((estimate,estimate)))[0]
             if args.amp_scale:
                 estimate = estimate * max_value / estimate.abs().max()
-            estimate, estimate_noise = get_chunks(estimate, noise, sample_rate, peaks, duration_samples=args.length)
-            for j, chunk in enumerate(estimate):
+            estimate_chunks, estimate_noise_chunks = get_chunks(estimate, noise, sample_rate, start_end, duration=args.segment, compute_noise=True)
+            for j, chunk in enumerate(estimate_chunks):
                 allf = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=sample_rate)
                 res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise):
+            if estimate_noise_chunks is not None and args.noise_dir is None:
+                for j, chunk in enumerate(estimate_noise_chunks):
                     allfnoise = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=sample_rate)
                     res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
             return res, res_noise    
         else:
+            ### save csv
+            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+            with open(filename, 'w') as f:
+                f.write('start,end,rms\n')
             if args.noise_dir is None:
                 noise = original_noisy_signals-estimate
                 for i in range(3):
@@ -233,8 +272,18 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
         
         res = []
         res_noise = []
-        peaks, norms = get_peaks(estimate_sum.to('cpu').numpy().squeeze(), sample_rate, peak_height=args.peak_height)
-        if len(peaks) > 0:
+        norms, start_end = get_start_end(estimate_sum.to('cpu').numpy().squeeze(), sample_rate)
+        if len(start_end) > 0:
+            ### replace nans with minimum value
+            norms[np.isnan(norms)] = norms.min()
+            ### save csv
+            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+            with open(filename, 'w') as f:
+                f.write('start,end,rms\n')
+                for i in range(len(start_end)):
+                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+    
+            ### save wav
             noise = original_noisy_signals-estimate
             if args.noise_dir is None:
                 for i in range(3):
@@ -242,21 +291,28 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                     noise = noise - signal
                 noise = 3 * noise  
                 noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-
+                if args.noisy_estimate:
+                    noise = enhance_noise(noise, estimate)  
+                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
+                    res_noise.append([allfnoise[0],1., out_subdir])
             if args.revecho > 0:
                 estimate_sum = revecho(torch.stack((estimate_sum,estimate_sum)))[0]
             if args.amp_scale:
                 estimate_sum = estimate_sum * max_value / estimate_sum.abs().max()
-            estimate_sum, estimate_noise = get_chunks(estimate_sum, noise/4., sample_rate, peaks, duration_samples=args.length)
-            for j, chunk in enumerate(estimate_sum):
+            estimate_sum_chunks, estimate_noise_chunks = get_chunks(estimate_sum, noise/4., sample_rate, start_end, duration=args.segment, compute_noise=True)
+            for j, chunk in enumerate(estimate_sum_chunks):
                 allf = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=sample_rate)
                 res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise):
+            if estimate_noise_chunks is not None and args.noise_dir is None:
+                for j, chunk in enumerate(estimate_noise_chunks):
                     allfnoise = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=sample_rate)
                     res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
             return res, res_noise    
         else:
+            ### save csv
+            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+            with open(filename, 'w') as f:
+                f.write('start,end,rms\n')
             if args.noise_dir is None:
                 noise = original_noisy_signals-estimate
                 for i in range(3):
@@ -280,8 +336,6 @@ def get_experiment_code(args,step):
     return experiment
     
 def denoise(args, step=0):
-    if args.noise_reduce:
-        args.peak_height *= 0.5
     args.experiment = get_experiment_code(args,step)
     # if args.device == 'cpu' and args.num_workers > 1:
     #     torch.multiprocessing.set_sharing_strategy('file_system')
@@ -312,7 +366,7 @@ def denoise(args, step=0):
     md_noise = pd.DataFrame(columns=['fn','metric','dataset'])
     npos = 0
     nneg = 0
-    with ProcessPoolExecutor(args.num_workers) as pool:
+    with ProcessPoolExecutor(np.maximum(1,args.num_workers)) as pool:
         iterator = denoiser.utils.LogProgress(logger, loader, name="Denoising files")
         pendings = []
         for data in iterator:
@@ -375,66 +429,113 @@ def denoise(args, step=0):
                     for r in res_noise:
                         md_noise.loc[len(md_noise)] = r
     if step<args.steps:
-        print("denoised with peaks %d files, without peaks %d files." % (npos, nneg))
+        print("denoised with calls %d files, without calls %d files." % (npos, nneg))
         md.to_csv(os.path.join( out_dir, args.experiment+".csv"), index=False)
         md_noise.to_csv(os.path.join( out_dir, args.experiment+"_noise.csv"), index=False)
     return model
 
-def get_peaks(wav, sample_rate, smoothing_window=6, peak_window=10, peak_height=0.01):
+def get_start_end(wav, sample_rate, smoothing_window=3, db_treshold=-40, min_duration=0.2):
     wav = noisereduce.reduce_noise(y=wav, sr=sample_rate)
-    spec = librosa.magphase(librosa.stft(wav, n_fft=2048, hop_length=512, win_length=2048, window=np.ones, center=True))[0]
-    frames2time = 512/sample_rate
-    rms = librosa.feature.rms(S=spec).squeeze()
+    wav = highpass(wav, sample_rate, cutoff=60)
+    window_size = int(0.1 * sample_rate)
+    hop_size = int(0.02 * sample_rate)
+    short_audio = False
+    if wav.shape[-1] < 2 * window_size:
+        ### adjust hop and window size
+        window_size = int(wav.shape[-1] / 2) - 1
+        hop_size = int(window_size / 2)
+        short_audio = True
+    spec = librosa.magphase(librosa.stft(wav, n_fft=window_size, hop_length=hop_size, win_length=window_size, window=np.ones, center=True))[0]
+    frames2time = hop_size/sample_rate 
+    rms = librosa.feature.rms(S=spec, frame_length=window_size, hop_length=hop_size, center=True, pad_mode='zero').squeeze()
     rms =  np.nan_to_num(rms)
     if hasattr(rms, "__len__"):
         if smoothing_window>len(rms):
             smoothing_window = len(rms)//3
         if smoothing_window>1:
             rms = scipy.signal.savgol_filter(rms, smoothing_window, 2) # window size 3, polynomial order 2
-        ### compute peaks in both channels
-        if peak_window>len(rms):
-            peak_window = len(rms)//2
-        peaks, _ = scipy.signal.find_peaks(rms, height=peak_height, distance=peak_window)
-        allowed = int(3 * sample_rate / 512)
+        # if min_duration>len(rms):
+        #     min_duration = len(rms)/2 
+        allowed = int(3 * sample_rate / hop_size)
+        db_values = 20 * np.log10(rms)
+        ### replace nans with minimum value
+        db_values[np.isnan(db_values)] = db_values.min()
+        if short_audio:
+            start_end = [(0.,wav.shape[-1]/sample_rate)]
+            norms = [rms.mean()]
+            return norms, start_end
+        start_end = []
         norms = []
-        for p in peaks:
-            start = np.maximum(0, p-allowed)
-            end = np.minimum(len(rms), p+allowed)
-            ####norms.append(scipy.stats.kurtosis(spec[:,start:end].sum(axis=0), fisher=False)/rms[start:end].mean())
-            norms.append(rms[start:end].max()-rms[start:end].min())
-        peaks =  peaks * frames2time
-    else:
-        peaks = np.array([])
-        norms = np.array([])
-    
-    return peaks, norms
+        event_in_progress = False
+        start_index = None
+        for i, db in enumerate(db_values):
+            if db >= db_treshold and not event_in_progress:
+                ### Start of a new event
+                start_index = i
+                event_in_progress = True
+            elif db < db_treshold and event_in_progress:
+                ### End of the current event
+                if i - start_index > int(min_duration * sample_rate / hop_size):
+                    start_end.append([np.maximum(0,(start_index-1))*frames2time, (i - 1)*frames2time])
+                    norms.append(rms[start_index:i-1].mean())
+                    event_in_progress = False
 
-def get_chunks(audio, noise, sample_rate, peaks, duration_samples=4*16000, compute_noise=True, offset=0.1*16000):
-    peaks_samples = peaks * sample_rate
-    left_shift = np.ceil(duration_samples / 2)
-    right_shift = duration_samples - left_shift
-    peaks_samples = np.clip(peaks_samples, left_shift, audio.shape[-1] - right_shift)
-    start_stop = np.unique(np.stack([np.maximum(0,peaks_samples - left_shift), np.minimum(peaks_samples + right_shift,audio.shape[-1])], axis=-1), axis=0)
-    new_start_stop = [start_stop[0]]
+        #### Handle case where the last event reaches the end of the list
+        if event_in_progress and i - start_index > int(min_duration * sample_rate / hop_size):
+            start_end.append((np.maximum(0,(start_index-1))*frames2time, (len(db_values) - 1)*frames2time))
+            norms.append(rms[start_index : len(rms) - 1].mean())
+        start_end = np.array(start_end)
+        norms = np.array(norms)
+    else:
+        norms = np.array([])
+        start_end = np.array([])
+    return norms, start_end
+
+
+def get_chunks(audio, noise, sample_rate, start_end, duration=4., compute_noise=True, merge=False, amplitude_augment=False):
+    duration_samples = duration * sample_rate
+    offset = int(duration_samples / 2 )
+    start_stop = [[np.maximum(0,int(s*sample_rate)),np.minimum(int(e*sample_rate),audio.shape[-1])] for s,e in start_end if s < e]
+    ### add silence between start and end in audio 
+    audio[...,0:start_stop[0][0]] = 0
     for i in range(1,len(start_stop)):
-        overlap = int(max(0, min(new_start_stop[-1][1], start_stop[i][1]) - max(new_start_stop[-1][0], start_stop[i][0])))
-        if overlap < 0.6 * duration_samples:
-            new_start_stop.append(start_stop[i])
-    new_start_stop = np.array(new_start_stop)
-    audio_signal=torch.stack([audio[...,slice(int(idx[0]), np.minimum(int(idx[0])+duration_samples,int(idx[1])))] for idx in new_start_stop])
+        if (start_stop[i][0] - start_stop[i-1][1]) > duration_samples/10:
+            audio[...,start_stop[i-1][1]:start_stop[i][0]] = 0 
+    audio[...,start_stop[-1][1]:] = 0
     
+    ### events
+    if merge:
+        new_start_stop_offset = [[np.maximum(0, start_stop[i][0] - offset),np.minimum(start_stop[i][1]+offset, audio.shape[-1])] for i in range(len(start_stop))]
+        new_start_stop = [new_start_stop_offset[0]]
+        for i in range(1,len(new_start_stop_offset)):
+            overlap = int(max(0, min(new_start_stop[-1][1], new_start_stop_offset[i][1]) - max(new_start_stop[-1][0], new_start_stop_offset[i][0])))
+            if overlap < int(0.6 * duration_samples):
+                new_start_stop.append(new_start_stop_offset[i])
+    else:
+        new_start_stop = [[np.maximum(0, start_stop[i][0] - offset),np.minimum(start_stop[i][1]+offset, audio.shape[-1])] for i in range(len(start_stop))]
+
+    audio_signal = []
+    for idx in new_start_stop:
+        
+    # audio_signal=[audio[...,slice(int(idx[0]), np.minimum(int(idx[0])+duration_samples,int(idx[1])))] for idx in new_start_stop]
+    
+    # new_audio_signal = []
+    # if amplitude_augment:
+    #     for i, audio in enumerate(audio_signal):
+    #         audio = audio * np.random.uniform(0.9, 1.1)
+    
+    ### noise
     audio_noise = None
     if compute_noise:
-        ### extract noise chunks from new_start_stop
         start = 0
         noise_start_stop = []
-        for i in range(len(new_start_stop)-1):
-            end = new_start_stop[i+1][0] - offset
-            if end - start > duration_samples:
-                noise_start_stop.append([start, end])
-            start = end + offset
-        if (audio.shape[-1] - new_start_stop[-1][1]) > duration_samples:
-            noise_start_stop.append([new_start_stop[-1][1], audio.shape[-1]])
+        if start_stop[0][0] > duration_samples:
+            noise_start_stop.append([0, start_stop[0][0]])
+        for i in range(len(start_stop)-1):
+            if start_stop[i+1][0] - start_stop[i][1] > duration_samples:
+                noise_start_stop.append([start_stop[i][1], start_stop[i+1][0]])
+        if (audio.shape[-1] - start_stop[-1][1]) > duration_samples:
+            noise_start_stop.append([start_stop[-1][1], audio.shape[-1]])
         if len(noise_start_stop)>0:
             audio_noise = [noise[...,slice(int(idx[0]), int(idx[1]))] for idx in noise_start_stop]
 
@@ -529,10 +630,13 @@ def train(args,step=0):
     
     args.experiment = get_experiment_code(args,step)
     
+    # if args.noise_dir is None:
+    #     args.low_snr = 0 
+    #     args.high_snr = 0
+    
     train_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'train'))
     valid_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid')) if os.path.exists(os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid'))) else None
-    test_path = '/home/marius/data/zebra_finch_denoising/16000'
-    # test_path = ''
+
     if args.verbose:
         logger.setLevel(logging.DEBUG)
         logging.getLogger("denoise").setLevel(logging.DEBUG)
@@ -608,9 +712,14 @@ def train(args,step=0):
     #     args.continue_pretrained = args.continue_pretrained.replace('seed=', f'seed={args.seed}')
     
     ##### Building datasets and loaders
-    tr_dataset = datasets.NoiseCleanAdaptSet(
-        train_path, length=length, stride=stride, pad=args.pad, epoch_size=args.epoch_size,
-        low_snr=args.low_snr,high_snr=args.high_snr,**kwargs_train)
+    if args.parallel_noise and not args.noise_dir:
+        tr_dataset = datasets.NoiseCleanAdaptSetParNoise(
+            train_path, length=length, stride=stride, pad=args.pad, epoch_size=args.epoch_size,
+            low_snr=args.low_snr,high_snr=args.high_snr,**kwargs_train)
+    else:
+        tr_dataset = datasets.NoiseCleanAdaptSet(
+            train_path, length=length, stride=stride, pad=args.pad, epoch_size=args.epoch_size,
+            low_snr=args.low_snr,high_snr=args.high_snr,**kwargs_train)
     tr_loader = denoiser.distrib.loader(
         tr_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, worker_init_fn=seed_worker, generator=g)
     if valid_path:
@@ -622,14 +731,14 @@ def train(args,step=0):
     else:
         cv_loader = None
     
-    if os.path.exists(test_path):
+    if os.path.exists(args.test_dir):
         del kwargs_valid["exclude"]
         del kwargs_valid["exclude_noise"]
         del kwargs_valid["rng"]
         del kwargs_valid["rngnp"]
         del kwargs_valid["rngth"]
-        if isinstance(test_path, str):
-            test_path = {'test':test_path}
+        if isinstance(args.test_dir, str):
+            test_path = {'test':args.test_dir}
         tt_dataset = {}
         tt_loader = {}
         for key, value in test_path.items():

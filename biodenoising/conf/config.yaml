@@ -23,7 +23,7 @@ normalize: true # normalize the clean signal
 random_gain: true # random gain
 low_gain: 0.5 # low gain
 high_gain: 1. # high gain
-
+parallel_noise: false # mix with noise from the same file -> for domain adaptation
 
 # Dataset Augmentation
 remix: false   # remix noise and clean
@@ -33,6 +33,7 @@ shift_same: false   # shift noise and clean by the same amount
 revecho: 0  # add reverb like augment
 timescale: 0.8  # random time scaling
 flip: 0 # random flip
+mixup: 0. # mixup
 # remix: false   # remix noise and clean
 # bandmask: 0.2   # drop at most this fraction of freqs in mel scale
 # shift: 64000    # random shift, number of samples
