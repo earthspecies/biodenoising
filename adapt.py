@@ -75,8 +75,11 @@ parser.add_argument("--noisy_dir", type=str, default=None,
                     help="path to the directory with noisy wav files")
 parser.add_argument("--noise_dir", type=str, default=None,
                     help="path to the directory with noise wav files")
+parser.add_argument("--test_dir", type=str, default=None,
+                    help="for evaluation purpose only: path to the directory containing clean.json and noise.json files")
 parser.add_argument("--out_dir", type=str, default="enhanced",
                     help="directory putting enhanced wav files")
+parser.add_argument('--noisy_estimate', action="store_true",help="compute the noise as the difference between the noisy and the estimated signal")
 # parser.add_argument("--cfg", type=str, default="biodenoising/conf/config_adapt.yaml",
 #                     help="path to the directory with noise wav files")
 parser.add_argument('-v', '--verbose', action='store_const', const=logging.DEBUG,
@@ -121,7 +124,7 @@ def main(args):
         args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
         biodenoising.adapt.train(args,step=step)
         args.model_path = args.checkpoint_file
-        args.lr = args.lr*0.5
+        args.lr = args.lr*0.1
     
     model = biodenoising.adapt.denoise(args, step=step+1)
 

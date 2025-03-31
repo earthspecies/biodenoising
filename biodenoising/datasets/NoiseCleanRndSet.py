@@ -7,6 +7,7 @@ import string
 import torch
 import torchaudio
 import logging
+from ..denoiser.noise import get_noise
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ class NoiseCleanRndSet:
         
         ### add generated noise
         if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
-            other_noise = torch.from_numpy(noise.get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
             other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
             gain = self.rngnp.uniform(low=0.05, high=0.5)      
             other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
@@ -306,7 +307,7 @@ class NoiseClean2BalancedSet(NoiseCleanRndSet):
         
         ### add generated noise
         if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
-            other_noise = torch.from_numpy(noise.get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
             other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
             gain = self.rngnp.uniform(low=0.05, high=0.5)      
             other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
@@ -336,14 +337,6 @@ class NoiseClean2BalancedSet(NoiseCleanRndSet):
             noise = snr_scale(clean, noise, snr)
             noisy = clean + noise
 
-        # ### for debugging purposes, write wav files
-        # randomfn = ''.join(random.choices(string.ascii_lowercase,k=6))+'.wav'
-        # os.makedirs(os.path.abspath('tmp'),exist_ok=True)
-        # outfile = os.path.abspath(os.path.join('tmp',randomfn))
-        # torchaudio.save(uri=outfile,src=noisy,sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-source.wav'),src=clean.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-noise.wav'),src=noise.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        
         return noisy, clean
     
 class NoiseClean1BalancedSet(NoiseCleanRndSet):
@@ -366,7 +359,7 @@ class NoiseClean1BalancedSet(NoiseCleanRndSet):
         
         ### add generated noise
         if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
-            other_noise = torch.from_numpy(noise.get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
             other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
             gain = self.rngnp.uniform(low=0.05, high=0.5)      
             other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
@@ -396,14 +389,6 @@ class NoiseClean1BalancedSet(NoiseCleanRndSet):
             noise = snr_scale(clean, noise, snr)
             noisy = clean + noise
 
-        # ### for debugging purposes, write wav files
-        # randomfn = ''.join(random.choices(string.ascii_lowercase,k=6))+'.wav'
-        # os.makedirs(os.path.abspath('tmp'),exist_ok=True)
-        # outfile = os.path.abspath(os.path.join('tmp',randomfn))
-        # torchaudio.save(uri=outfile,src=noisy,sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-source.wav'),src=clean.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-noise.wav'),src=noise.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        
         return noisy, clean
     
 class NoiseClean1WeightedSet(NoiseCleanRndSet):
@@ -439,7 +424,7 @@ class NoiseClean1WeightedSet(NoiseCleanRndSet):
         
         ### add generated noise
         if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
-            other_noise = torch.from_numpy(noise.get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
             other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
             gain = self.rngnp.uniform(low=0.05, high=0.5)      
             other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
@@ -467,16 +452,7 @@ class NoiseClean1WeightedSet(NoiseCleanRndSet):
             snr = torch.tensor([snr])
             
             noise = snr_scale(clean, noise, snr)
-            noisy = clean + noise
-
-        # ### for debugging purposes, write wav files
-        # randomfn = ''.join(random.choices(string.ascii_lowercase,k=6))+'.wav'
-        # os.makedirs(os.path.abspath('tmp'),exist_ok=True)
-        # outfile = os.path.abspath(os.path.join('tmp',randomfn))
-        # torchaudio.save(uri=outfile,src=noisy,sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-source.wav'),src=clean.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-noise.wav'),src=noise.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        
+            noisy = clean + noise 
         return noisy, clean
     
 
@@ -494,7 +470,7 @@ class NoiseCleanAdaptSet(NoiseCleanRndSet):
         
         ### add generated noise
         if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
-            other_noise = torch.from_numpy(noise.get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
             other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
             gain = self.rngnp.uniform(low=0.05, high=0.5)      
             other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
@@ -524,12 +500,69 @@ class NoiseCleanAdaptSet(NoiseCleanRndSet):
             noise = snr_scale(clean, noise, snr)
             noisy = clean + noise
 
-        # ### for debugging purposes, write wav files
-        # randomfn = ''.join(random.choices(string.ascii_lowercase,k=6))+'.wav'
-        # os.makedirs(os.path.abspath('tmp'),exist_ok=True)
-        # outfile = os.path.abspath(os.path.join('tmp',randomfn))
-        # torchaudio.save(uri=outfile,src=noisy,sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-source.wav'),src=clean.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
-        # torchaudio.save(uri=outfile.replace('.wav','-noise.wav'),src=noise.detach().cpu(),sample_rate=self.sample_rate,format='wav',encoding='PCM_F',channels_first=True)
+        return noisy, clean
+    
+class NoiseCleanAdaptSetParNoise(NoiseCleanRndSet):
+    def __init__(self, json_dir, **kwargs):
+        kwargs['use_subset_noise'] = True
+        kwargs['use_subset_clean'] = True
+        NoiseCleanRndSet.__init__(self, json_dir=json_dir, **kwargs)
+    
+    def __len__(self):
+        length = 0 
+        for k,w in self.clean_set.subsets.items():
+            length += len(self.clean_set.subsets[k])
+        return length
+    
+    def __getitem__(self, index):
+        subsets_clean = list(self.clean_set.subsets.keys())
+        subset_id_clean = index % len(subsets_clean)
+        subset_clean = subsets_clean[subset_id_clean]
+        self.clean_set.set_subset(subset_id_clean)
+        idx_clean = self.rng.randrange(len(self.clean_set))
         
+        clean = self.clean_set[idx_clean]
+
+        subsets_noise = list(self.noise_set.subsets.keys())
+        if subset_clean in subsets_noise:
+            subset_id_noise = subsets_noise.index(subset_clean)
+            self.noise_set.set_subset(subset_id_noise)
+            idx_noise = self.rng.randrange(len(self.noise_set))
+        else:
+            subset_id_noise = index % len(subsets_noise)
+            self.noise_set.set_subset(subset_id_noise)
+            idx_noise = self.rng.randrange(len(self.noise_set))
+        noise = self.noise_set[idx_noise]
+
+        ### add generated noise
+        if self.noise_prob > 0 and self.rng.random() < self.noise_prob:
+            other_noise = torch.from_numpy(get_noise(2*noise.shape[-1],self.rngnp)).type_as(noise)
+            other_noise = (other_noise - other_noise.min())/(other_noise.max() - other_noise.min())*(noise.max()-noise.min()) + noise.min() 
+            gain = self.rngnp.uniform(low=0.05, high=0.5)      
+            other_noise = time_scaling(other_noise, self.rngnp.uniform(0.5, 2.))
+            other_noise = other_noise[...,:noise.shape[-1]]
+            noise += gain*other_noise
+
+            
+        if self.silence_prob > 0 and self.rng.random() < self.silence_prob:
+            clean = torch.zeros_like(noise)
+            noisy = noise 
+        else:
+            clean = torch.nan_to_num(clean, nan=1e-8, posinf=1, neginf=-1)
+            
+            if self.normalize:
+                clean = self.normalize_audio(clean)
+            
+                if self.random_gain:
+                    gain = self.rngnp.uniform(low=self.low_gain, high=self.high_gain) 
+                    clean = gain*clean
+                
+            ### remix with specified snr    
+            snr = self.rngnp.uniform(self.low_snr, self.high_snr) 
+    
+            snr = torch.tensor([snr])
+            
+            noise = snr_scale(clean, noise, snr)
+            noisy = clean + noise
+
         return noisy, clean

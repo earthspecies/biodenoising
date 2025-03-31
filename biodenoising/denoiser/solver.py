@@ -75,6 +75,8 @@ class Solver(object):
         if args.revecho:
             augments.append(
                 augment.RevEcho(args.revecho,rng=self.rng,seed=args.seed))
+        if args.mixup:
+            augments.append(augment.Mixup(prob=args.mixup,rngth=self.rngth,seed=args.seed))
         self.augment = torch.nn.Sequential(*augments)
 
         # Training config
@@ -180,6 +182,24 @@ class Solver(object):
             logger.info(f"Epoch {epoch + 1}: {info}")
             if self.experiment_logger is not None:
                 self.experiment_logger.log_metrics(metrics, epoch=epoch+1)
+                
+        
+        # initial evaluation
+        if self.tt_loader:
+            for key, value in self.tt_loader.items():
+                # Evaluate on the testset
+                logger.info('-' * 70)
+                logger.info('Evaluating on the test set %s...', key)
+                # We switch to the best known model for testing
+                # with swap_state(self.model, self.best_state):
+                sisdri_mean, sisdr_mean, sisdri_median, sisdr_median, sisdrn_mean, sisdrn_median = evaluate(self.args, self.model, self.tt_loader[key], self.experiment_logger, self.args.eval_window_size, self.sample_rate)
+                if sisdrn_mean!=0:
+                    metrics={'test_'+key+'_sisdri_mean': sisdri_mean, 'test_'+key+'_sisdr_mean': sisdr_mean, 'test_'+key+'_sisdrn_mean': sisdr_mean, 'test_'+key+'_sisdri_median': sisdri_median, 'test_'+key+'_sisdr_median': sisdr_median, 'test_'+key+'_sisdrn_median': sisdrn_median}
+                else:
+                    metrics={'test_'+key+'_sisdri_mean': sisdri_mean, 'test_'+key+'_sisdr_mean': sisdr_mean, 'test_'+key+'_sisdri_median': sisdri_median, 'test_'+key+'_sisdr_median': sisdr_median}
+                info = " | ".join(f"{k.capitalize()} {v:.5f}" for k, v in metrics.items())
+                logger.info('-' * 70)
+                logger.info(bold(f"Initial evaluation | {info}"))
         
         for epoch in range(len(self.history), self.epochs):
             # Train one epoch
@@ -365,6 +385,11 @@ class TeacherStudentSolver(object):
                 augment.RevEcho(args.revecho))
         if args.timescale:
             augments.append(augment.TimeScale(args.timescale))
+        if args.mixup:
+            augments.append(augment.MixUp(args.mixup))
+        if args.flip:
+            augments.append(augment.Flip())
+        
         self.augment = torch.nn.Sequential(*augments)
 
         # Training config

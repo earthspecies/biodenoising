@@ -16,13 +16,17 @@ Info = namedtuple("Info", ["length", "sample_rate", "channels"])
 
 
 def get_info(path):
-    info = torchaudio.info(path)
-    if hasattr(info, 'num_frames'):
-        # new version of torchaudio
-        return Info(info.num_frames, info.sample_rate, info.num_channels)
-    else:
-        siginfo = info[0]
-        return Info(siginfo.length // siginfo.channels, siginfo.rate, siginfo.channels)
+    try:
+        info = torchaudio.info(path)
+        if hasattr(info, 'num_frames'):
+            # new version of torchaudio
+            return Info(info.num_frames, info.sample_rate, info.num_channels)
+        else:
+            siginfo = info[0]
+            return Info(siginfo.length // siginfo.channels, siginfo.rate, siginfo.channels)
+    except Exception as e:
+        print("Error while loading {}: {}".format(path, e))
+        return None
 
 
 def find_audio_files(path, exts=[".wav"], progress=True):
@@ -38,9 +42,10 @@ def build_meta(audio_files, progress=True):
     meta = []
     for idx, file in enumerate(audio_files):
         info = get_info(file)
-        meta.append((file, info.length))
-        if progress:
-            print(format((1 + idx) / len(audio_files), " 3.1%"), end='\r', file=sys.stderr)
+        if info is not None:
+            meta.append((file, info.length))
+            if progress:
+                print(format((1 + idx) / len(audio_files), " 3.1%"), end='\r', file=sys.stderr)
     meta.sort()
     return meta
 

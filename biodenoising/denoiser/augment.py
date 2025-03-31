@@ -33,6 +33,36 @@ class Remix(nn.Module):
         perm = th.argsort(th.rand(bs, device=device, generator=self.rngth), dim=0)
         return th.stack([noise[perm], clean])
 
+class Mixup(nn.Module):
+    """Remix.
+    Mixup transformations, sums different clean speech within a given batch
+    """
+    def __init__(self, prob=0., rngth=None, seed=None):
+        """__init__.
+
+        """
+        super().__init__()
+        if rngth is None:
+            self.rngth = th.Generator(device='cpu').manual_seed(seed)
+        else:
+            self.rngth = rngth 
+        self.prob = prob
+
+    def forward(self, sources):
+        noise, clean = sources
+        bs, *other = noise.shape
+        device = noise.device
+        ### clean mixup
+        mixup_mask = th.rand(bs, device=device, generator=self.rngth) <= self.prob
+        perm = th.argsort(th.rand(bs, device=device, generator=self.rngth), dim=0)
+        clean[mixup_mask] = (clean[mixup_mask] + clean[perm][mixup_mask]) / 2
+        # ### noise mixup
+        # mixup_mask = th.rand(bs, device=device, generator=self.rngth) <= self.prob
+        # perm = th.argsort(th.rand(bs, device=device, generator=self.rngth), dim=0)
+        # noise[mixup_mask] = (noise[mixup_mask] + noise[perm][mixup_mask]) / 2
+        return th.stack([noise, clean])
+
+
 
 class RevEcho(nn.Module):
     """

@@ -1,4 +1,6 @@
 julius
+librosa
+norbert
 numpy
 einops
 openunmix

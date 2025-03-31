@@ -115,10 +115,10 @@ python -m biodenoising.denoiser.denoise --input=<path to the dir with the noisy 
 ```
 Notice, you can either provide `noisy_dir` or `noisy_json` for the test data.
 Note that the path given to `--model_path` should be obtained from one of the `best.th` file, not `checkpoint.th`.
-It is also possible to use pre-trained model, using  `--dns48`.
+It is also possible to use pre-trained model, using  `--biodenoising16k_dns48`.
  For more details regarding possible arguments, please see:
 ```
-usage: biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --dns48 ]
+usage: biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --biodenoising16k_dns48 ]
                         [--device DEVICE] [--dry DRY]
                         [--num_workers NUM_WORKERS] [--streaming]
                         [--output OUT_DIR] [--batch_size BATCH_SIZE] [-v]
@@ -166,6 +166,23 @@ total lag: 41.3ms, stride: 16.0ms, time per frame: 12.2ms, delta: 0.21%, RTF: 0.
 ```
 Feel free to explore different settings, i.e. bigger models and more CPU-cores.
 
+### Training
+
+Training is done in three steps:
+First we need to obtain the pseudo-clean training data:
+```
+python generate_training.py --out_dir /home/$USER/data/biodenoising16k/ --noisy_dir /home/$USER/data/biodenoising16k/dev/noisy/ --rir_dir /home/$USER/data/biodenoising16k/rir/ --method biodenoising16k_dns48 --transform none --device cuda
+```
+
+Then we need to prepare the csv files needed for training:
+```
+python prepare_experiments.py --data_dir /home/$USER/data/biodenoising16k/ --transform none --method biodenoising16k_dns48
+```
+
+Then we can train the model:
+```
+python train.py dset=biodenoising16k_biodenoising16k_dns48_none_step0 seed=0
+```
 
 ## Citation
 If you use the code in your research, then please cite it as:
