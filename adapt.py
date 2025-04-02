@@ -1,74 +1,21 @@
 import argparse
 import biodenoising
+from biodenoising.adapt import ConfigParser  # Import ConfigParser from the package
 import logging
 import os
 import sys
 import yaml
+import pandas as pd
+import soundfile as sf
+import torchaudio
+import numpy as np
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-class ConfigParser():
-    def __init__(self, *pargs, **kwpargs):
-        self.options = []
-        self.pargs = pargs
-        self.kwpargs = kwpargs
-        self.conf_parser = argparse.ArgumentParser(add_help=False)
-        self.conf_parser.add_argument("-c", "--config",
-                                 default="biodenoising/conf/config_adapt.yaml",
-                                 help="where to load YAML configuration")
-        
-    def add_argument(self, *args, **kwargs):
-        self.options.append((args, kwargs))
+# No need to define ConfigParser here anymore, as we're importing it
 
-    def parse(self, args=None):
-        if args is None:
-            args = sys.argv[1:]
-
-        res, remaining_argv = self.conf_parser.parse_known_args(args)
-
-        config_vars = {}
-        if res.config is not None:
-            with open(res.config, 'rb') as stream:
-                config_vars = yaml.safe_load(stream.read())
-
-        parser = argparse.ArgumentParser(
-            *self.pargs,
-            # Inherit options from config_parser
-            parents=[self.conf_parser],
-            # Don't mess with format of description
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            **self.kwpargs,
-        )
-
-        for opt_args, opt_kwargs in self.options:
-            parser_arg = parser.add_argument(*opt_args, **opt_kwargs)
-            if parser_arg.dest in config_vars:
-                config_default = config_vars.pop(parser_arg.dest)
-                expected_type = str
-                if parser_arg.type is not None:
-                    expected_type = parser_arg.type
-                # import pdb; pdb.set_trace()
-                # if not isinstance(config_default, expected_type):
-                if not issubclass(type(config_default),expected_type):
-                    parser.error('YAML configuration entry {} '
-                                 'does not have type {}'.format(
-                                     parser_arg.dest,
-                                     expected_type))
-
-                parser_arg.default = config_default
-        
-        
-        for k,v in config_vars.items():
-            parser.set_defaults(**{k:v})
-            if k=='dset': 
-                for k1,v1 in v.items():
-                    parser.set_defaults(**{k1:v1})
-            
-        return parser.parse_args(remaining_argv)
-
-# parser = argparse.ArgumentParser(
-#         'adapt',
-#         description="Adapt model to the noisy dataset by training on pseudo-clean targets")
+# Use the imported ConfigParser
 parser = ConfigParser()
 parser.add_argument("--steps", default=5, type=int, help="Number of steps to use for adaptation")
 parser.add_argument("--noisy_dir", type=str, default=None,
@@ -80,8 +27,9 @@ parser.add_argument("--test_dir", type=str, default=None,
 parser.add_argument("--out_dir", type=str, default="enhanced",
                     help="directory putting enhanced wav files")
 parser.add_argument('--noisy_estimate', action="store_true",help="compute the noise as the difference between the noisy and the estimated signal")
-# parser.add_argument("--cfg", type=str, default="biodenoising/conf/config_adapt.yaml",
-#                     help="path to the directory with noise wav files")
+parser.add_argument("--cfg", type=str, default="biodenoising/conf/config_adapt.yaml",
+                    help="path to the directory with noise wav files")
+parser.add_argument("--epochs", default=5, type=int, help="Number of epochs per step")
 parser.add_argument('-v', '--verbose', action='store_const', const=logging.DEBUG,
                     default=logging.INFO, help="more loggging")
 parser.add_argument("--method",choices=["biodenoising16k_dns48"], default="biodenoising16k_dns48",help="Method to use for denoising")
@@ -104,29 +52,29 @@ parser.add_argument('--device', default="cuda")
 parser.add_argument('--dry', type=float, default=0,
                     help='dry/wet knob coefficient. 0 is only denoised, 1 only input signal.')
 parser.add_argument('--num_workers', type=int, default=5)
+parser.add_argument('--annotations', action="store_true", default=False, 
+                    help="Use annotation files to extract segments from audio files")
+parser.add_argument('--annotations_begin_column', type=str, default="Begin", 
+                    help="Column name for segment start time in annotation files")
+parser.add_argument('--annotations_end_column', type=str, default="End", 
+                    help="Column name for segment end time in annotation files")
+parser.add_argument('--annotations_label_column', type=str, default=None, 
+                    help="Column name for segment label in annotation files")
+parser.add_argument('--annotations_label_value', type=str, default=None, 
+                    help="Filter annotations by this label value")
+parser.add_argument('--annotations_extension', type=str, default=".csv", 
+                    help="Extension of annotation files")
+parser.add_argument('--processed_dir', type=str, default=None, 
+                    help="Directory for storing preprocessed audio segments")
 
 def main(args):
     logging.basicConfig(stream=sys.stderr, level=args.verbose)
     logger.debug(args)
-    model = None
-    os.makedirs(os.path.join(args.out_dir, 'checkpoints'), exist_ok=True)
-
-    for step in range(args.steps):
-        model = biodenoising.adapt.denoise(args, step=step)
-        biodenoising.adapt.generate_json(args, step=step)
-        if step>0:
-            args.continue_from = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-            args.checkpoint_file = os.path.basename(args.checkpoint_file).replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
-        else:
-            args.continue_from = ''
-            args.checkpoint_file = args.checkpoint_file.replace('.th', '_step0.th')
-        args.checkpoint_file = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-        args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
-        biodenoising.adapt.train(args,step=step)
-        args.model_path = args.checkpoint_file
-        args.lr = args.lr*0.1
     
-    model = biodenoising.adapt.denoise(args, step=step+1)
+    # Call the refactored adaptation function from the module
+    model = biodenoising.adapt.run_adaptation(args)
+    
+    return model
 
 
 if __name__ == "__main__":

@@ -12,8 +12,78 @@ import torchaudio
 import noisereduce
 from . import denoiser
 from . import datasets
+from pathlib import Path
+import argparse
+import sys
+import yaml
 
 logger = logging.getLogger(__name__)
+
+class ConfigParser:
+    def __init__(self, *pargs, **kwpargs):
+        self.options = []
+        self.pargs = pargs
+        self.kwpargs = kwpargs
+        self.conf_parser = argparse.ArgumentParser(add_help=False)
+        self.conf_parser.add_argument("-c", "--config",
+                                 default="biodenoising/conf/config_adapt.yaml",
+                                 help="where to load YAML configuration")
+        
+    def add_argument(self, *args, **kwargs):
+        self.options.append((args, kwargs))
+
+    def parse(self, args=None):
+        if args is None:
+            args = sys.argv[1:]
+
+        res, remaining_argv = self.conf_parser.parse_known_args(args)
+
+        config_vars = {}
+        if res.config is not None:
+            with open(res.config, 'rb') as stream:
+                config_vars = yaml.safe_load(stream.read())
+
+        parser = argparse.ArgumentParser(
+            *self.pargs,
+            # Inherit options from config_parser
+            parents=[self.conf_parser],
+            # Don't mess with format of description
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            **self.kwpargs,
+        )
+
+        for opt_args, opt_kwargs in self.options:
+            parser_arg = parser.add_argument(*opt_args, **opt_kwargs)
+            if parser_arg.dest in config_vars:
+                config_default = config_vars.pop(parser_arg.dest)
+                expected_type = str
+                if parser_arg.type is not None:
+                    expected_type = parser_arg.type
+                # Handle store_true/store_false actions (boolean flags)
+                elif opt_kwargs.get('action') in ['store_true', 'store_false']:
+                    expected_type = bool
+                
+                # Perform type check
+                if not isinstance(config_default, expected_type):
+                    parser.error('YAML configuration entry {} '
+                                 'does not have type {}'.format(
+                                     parser_arg.dest,
+                                     expected_type))
+
+                parser_arg.default = config_default
+        
+        
+        for k,v in config_vars.items():
+            # Only set defaults for keys that aren't already added as arguments
+            # This prevents overriding command line arguments with config values
+            if k not in [opt_kwargs.get('dest') or opt_args[0].lstrip('-') for opt_args, opt_kwargs in self.options]:
+                parser.set_defaults(**{k:v})
+                # Special handling for nested dset dictionary
+                if k=='dset': 
+                    for k1,v1 in v.items():
+                        parser.set_defaults(**{k1:v1})
+            
+        return parser.parse_args(remaining_argv)
 
 def get_estimate(model, noisy, args):
     torch.set_num_threads(1)
@@ -95,7 +165,7 @@ def enhance_noise(noise, estimate):
         noise = noise.unsqueeze(0)
     return noise
 
-def get_dataset(noisy_dir, sample_rate, channels):
+def get_dataset(noisy_dir, sample_rate, channels, args=None):
     if noisy_dir:
         files = denoiser.audio.find_audio_files(noisy_dir)
     else:
@@ -103,8 +173,17 @@ def get_dataset(noisy_dir, sample_rate, channels):
             "Small sample set was not provided by noisy_dir. "
             "Skipping denoising.")
         return None
+    
+    # Set resample_to_sr based on arguments
+    resample_to_sr = None
+    if args is not None:
+        if (hasattr(args, 'force_sample_rate') and args.force_sample_rate == 0) or \
+           (hasattr(args, 'time_scale_factor') and args.time_scale_factor == 0):
+            resample_to_sr = sample_rate
+
     return denoiser.audio.Audioset(files, with_path=True,
-                    sample_rate=sample_rate, channels=channels, convert=True)
+                    sample_rate=sample_rate, channels=channels, 
+                    convert=True, resample_to_sr=resample_to_sr)
 
 
 def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_rate, args):
@@ -208,6 +287,10 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                 noise = 3 * noise  
                 noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
                 if args.noisy_estimate:
+                    ### trim the first 0.5 and the last 0.5 of the noise
+                    if noise.shape[-1] > sample_rate * 2:
+                        trim_samples = int(sample_rate * 1)
+                        noise = noise[..., trim_samples:-trim_samples]                        
                     noise = enhance_noise(noise, estimate)  
                     allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
                     res_noise.append([allfnoise[0],1., out_subdir])
@@ -292,6 +375,10 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                 noise = 3 * noise  
                 noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
                 if args.noisy_estimate:
+                    ### trim the first 0.5 and the last 0.5 of the noise
+                    if noise.shape[-1] > sample_rate * 2:
+                        trim_samples = int(sample_rate * 1)
+                        noise = noise[..., trim_samples:-trim_samples]                        
                     noise = enhance_noise(noise, estimate)  
                     allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
                     res_noise.append([allfnoise[0],1., out_subdir])
@@ -355,7 +442,7 @@ def denoise(args, step=0):
 
     out_dir = args.out_dir
     
-    dset = get_dataset(os.path.join(args.noisy_dir), sample_rate, channels)
+    dset = get_dataset(os.path.join(args.noisy_dir), sample_rate, channels, args)
     if dset is None:
         return
     loader = denoiser.distrib.loader(dset, batch_size=1, shuffle=False)
@@ -386,11 +473,13 @@ def denoise(args, step=0):
                 res_noise = None
                 if args.window_size > 0:
                     import asteroid
+                    window_size_samples = int(args.window_size * sample_rate )
+                    hop_size_samples = int(window_size_samples//4)
                     ola_model = asteroid.dsp.overlap_add.LambdaOverlapAdd(
                         nnet=model,  # function to apply to each segment.
                         n_src=1,  # number of sources in the output of nnet
-                        window_size=args.window_size,  # Size of segmenting window
-                        hop_size=args.window_size//4,  # segmentation hop size
+                        window_size=window_size_samples,  # Size of segmenting window
+                        hop_size=hop_size_samples,  # segmentation hop size
                         window="hann",  # Type of the window (see scipy.signal.get_window
                         reorder_chunks=False,  # Whether to reorder each consecutive segment.
                         enable_grad=False,  # Set gradient calculation on of off (see torch.set_grad_enabled)
@@ -521,7 +610,7 @@ def get_chunks(audio, noise, sample_rate, start_end, duration=4., compute_noise=
         if amplitude_augment:
             for i, audio in enumerate(audio_signal):
                 audio = audio * np.random.uniform(0.9, 1.1)
-    
+                
     ### noise
     audio_noise = None
     if compute_noise:
@@ -544,7 +633,7 @@ def to_json_folder(data_dict, args):
     json_dict = {'train':[], 'valid':[]}
     for split, dirs in data_dict.items():
         for d in dirs:
-            meta=biodenoising.denoiser.audio.find_audio_files(d)
+            meta=denoiser.audio.find_audio_files(d)
             if 'valid' not in data_dict.keys() and split=='train':
                 random.shuffle(meta)
                 if args.num_valid > 0:
@@ -581,7 +670,7 @@ def generate_json(args, step=0):
     ### filter out top top_ratio of files
     if args.use_top<1:
         n_drop = int(len(md)*(1-args.use_top))
-        md.drop(df.tail(n_drop).index,inplace=True)
+        md.drop(md.tail(n_drop).index,inplace=True)
         
     filenames = md['fn'].values.tolist()
     filenames = [f for f in filenames if os.path.exists(f)]
@@ -597,8 +686,8 @@ def generate_json(args, step=0):
     write_json(json_dict, 'clean.json', args)
     
     if args.noise_dir is not None:
-        noise_dirs = {'train':[os.path.join(args.noise_dir,f) for f in os.listdir(os.path.join(args.noise_dir))]}
-        json_dict_noise = to_json_folder(noise_dirs, args)
+        noise_dirs_dict = {'train':[os.path.join(args.noise_dir,f) for f in os.listdir(os.path.join(args.noise_dir))]}
+        json_dict_noise = to_json_list(noise_dirs_dict)
     else:
         noise_dirs_dict = {}
         
@@ -606,7 +695,7 @@ def generate_json(args, step=0):
         md_noise.sort_values(by='metric',ascending=False,ignore_index=True)
         if args.use_top<1:
             n_drop = int(len(md_noise)*(1-args.use_top))
-            md_noise.drop(df.tail(n_drop).index,inplace=True)
+            md_noise.drop(md_noise.tail(n_drop).index,inplace=True)
         
         filenames_noise = md_noise['fn'].values.tolist()
         filenames_noise = [f for f in filenames_noise if os.path.exists(f)]
@@ -633,7 +722,7 @@ def train(args,step=0):
     #     args.high_snr = 0
     
     train_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'train'))
-    valid_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid')) if os.path.exists(os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid'))) else None
+    valid_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid')) if os.path.exists(os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid', 'clean.json'))) else None
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -771,4 +860,195 @@ def train(args,step=0):
     ##### Construct Solver
     solver = denoiser.solver.Solver(data, model, optimizer, args, rng=rng, rngnp=rngnp, rngth=rngth, seed=args.seed, experiment_logger=experiment_logger, scheduler=scheduler)
     solver.train()
+
+def preprocess_with_annotations(args):
+    """
+    Preprocess audio files using annotation files.
+    
+    For each audio file in noisy_dir, find a corresponding annotation file,
+    extract segments according to annotations, and write them to new directories.
+    """
+    logger.info("Preprocessing audio files with annotations")
+    
+    if args.processed_dir is None:
+        args.processed_dir = os.path.join(args.out_dir, "preprocessed")
+    
+    # Create output directories
+    signal_dir = os.path.join(args.processed_dir, "signal")
+    noise_dir = os.path.join(args.processed_dir, "noise")
+    os.makedirs(signal_dir, exist_ok=True)
+    os.makedirs(noise_dir, exist_ok=True)
+    
+    # Find all audio files in noisy_dir
+    audio_files = []
+    for ext in ['.wav', '.WAV', '.flac', '.FLAC', '.mp3', '.MP3']:
+        audio_files.extend(list(Path(args.noisy_dir).glob(f"*{ext}")))
+    
+    if not audio_files:
+        logger.error(f"No audio files found in {args.noisy_dir}")
+        return
+    
+    logger.info(f"Found {len(audio_files)} audio files")
+    
+    processed_count = 0
+    for audio_path in audio_files:
+        # Find annotation file with the same base name
+        base_name = audio_path.stem
+        annotation_path = Path(args.noisy_dir) / f"{base_name}{args.annotations_extension}"
+        
+        if not annotation_path.exists():
+            logger.warning(f"No annotation file found for {audio_path}")
+            continue
+        
+        # Load audio
+        try:
+            waveform, sample_rate = torchaudio.load(audio_path)
+            if waveform.shape[0] > 1:  # Convert stereo to mono if needed
+                waveform = waveform.mean(dim=0, keepdim=True)
+        except Exception as e:
+            logger.error(f"Error loading audio file {audio_path}: {e}")
+            continue
+        
+        # Load annotations
+        try:
+            annotations = pd.read_csv(annotation_path)
+        except Exception as e:
+            logger.error(f"Error loading annotation file {annotation_path}: {e}")
+            continue
+        
+        # Filter annotations by label if specified
+        if args.annotations_label_column!='None' and args.annotations_label_column is not None and args.annotations_label_value is not None:
+            annotations = annotations[annotations[args.annotations_label_column] == args.annotations_label_value]
+            if len(annotations) == 0:
+                logger.warning(f"No annotations with label {args.annotations_label_value} found in {annotation_path}")
+                continue
+        
+        # Check if required columns exist
+        if args.annotations_begin_column not in annotations.columns or args.annotations_end_column not in annotations.columns:
+            logger.error(f"Required columns not found in {annotation_path}")
+            continue
+        
+        # Extract segments
+        audio_duration = waveform.shape[1] / sample_rate
+        segments = []
+        for _, row in annotations.iterrows():
+            start_time = float(row[args.annotations_begin_column])
+            end_time = float(row[args.annotations_end_column])
+            
+            if start_time >= end_time or start_time < 0 or end_time > audio_duration:
+                logger.warning(f"Invalid segment {start_time}-{end_time} in {annotation_path}")
+                continue
+                
+            start_sample = int(start_time * sample_rate)
+            end_sample = int(end_time * sample_rate)
+            
+            segments.append((start_sample, end_sample))
+        
+        if not segments:
+            logger.warning(f"No valid segments found in {annotation_path}")
+            continue
+        
+        # Sort segments by start time
+        segments.sort(key=lambda x: x[0])
+        
+        # Extract signal segments
+        for i, (start_sample, end_sample) in enumerate(segments):
+            segment = waveform[:, start_sample:end_sample]
+            signal_file = os.path.join(signal_dir, f"{base_name}_segment_{i}.wav")
+            torchaudio.save(signal_file, segment, sample_rate)
+        
+        # Extract noise segments (everything outside annotated segments)
+        noise_parts = []
+        last_end = 0
+        for start_sample, end_sample in segments:
+            if start_sample > last_end:
+                noise_parts.append(waveform[:, last_end:start_sample])
+            last_end = end_sample
+        
+        ### do not include last end part for the sake of doing few shot learning afterwards
+        # if last_end < waveform.shape[1]:
+        #     noise_parts.append(waveform[:, last_end:])
+        
+        if noise_parts:
+            # Concatenate noise parts
+            noise_segment = torch.cat(noise_parts, dim=1)
+            noise_file = os.path.join(noise_dir, f"{base_name}_noise.wav")
+            torchaudio.save(noise_file, noise_segment, sample_rate)
+        
+        processed_count += 1
+    
+    logger.info(f"Processed {processed_count} audio files")
+    
+    if processed_count > 0:
+        # Update the input directories
+        args.original_noisy_dir = args.noisy_dir
+        args.noisy_dir = signal_dir
+        args.original_noise_dir = args.noise_dir
+        args.noise_dir = noise_dir
+        logger.info(f"Updated noisy_dir to {args.noisy_dir}")
+        logger.info(f"Updated noise_dir to {args.noise_dir}")
+    else:
+        logger.error("No audio files were successfully processed")
+
+def run_adaptation(args):
+    """
+    Run the complete adaptation process with multiple steps.
+    
+    Args:
+        args: Arguments containing configuration for the adaptation process
+    """
+    # Apply preprocessing if annotations are used
+    if hasattr(args, 'annotations') and args.annotations:
+        preprocess_with_annotations(args)
+    
+    os.makedirs(os.path.join(args.out_dir, 'checkpoints'), exist_ok=True)
+
+    for step in range(args.steps):
+        denoise(args, step=step)  # No need to capture the returned model
+        generate_json(args, step=step)
+        if step > 0:
+            args.continue_from = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
+            args.checkpoint_file = os.path.basename(args.checkpoint_file).replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
+        else:
+            args.continue_from = ''
+            args.checkpoint_file = args.checkpoint_file.replace('.th', '_step0.th')
+        args.checkpoint_file = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
+        args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
+        train(args, step=step)
+        args.model_path = args.checkpoint_file
+        args.lr = args.lr * 0.5
+    
+    # Run the training again on the whole unannotated audio
+    if hasattr(args, 'annotations') and args.annotations:
+        if hasattr(args, 'original_noisy_dir'):
+            logger.info(f"Restoring original noisy_dir from {args.noisy_dir} to {args.original_noisy_dir}")
+            args.noisy_dir = args.original_noisy_dir
+        if hasattr(args, 'original_noise_dir') and args.noise_dir is not None:
+            logger.info(f"Restoring original noise_dir from {args.noise_dir} to {args.original_noise_dir}")
+            args.noise_dir = args.original_noise_dir
+        ### delete the generated audio files in out_dir
+        for file in os.listdir(args.out_dir):
+            if file.endswith('.wav'):
+                os.remove(os.path.join(args.out_dir, file))
+        ### delete the generated json files in out_dir
+        for file in os.listdir(args.out_dir):
+            if file.endswith('.json'):
+                os.remove(os.path.join(args.out_dir, file))
+        args.steps = 2 * args.steps
+        for step in range(step+1, args.steps):
+            denoise(args, step=step)  # No need to capture the returned model
+            generate_json(args, step=step)
+            if step > 0:
+                args.continue_from = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
+                args.checkpoint_file = os.path.basename(args.checkpoint_file).replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
+            else:
+                args.continue_from = ''
+                args.checkpoint_file = args.checkpoint_file.replace('.th', '_step0.th')
+            args.checkpoint_file = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
+            args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
+            train(args, step=step)
+            args.model_path = args.checkpoint_file
+            args.lr = args.lr * 0.5
+    
+    denoise(args, step=step+1)  # Final denoising step, no need to return model
 
