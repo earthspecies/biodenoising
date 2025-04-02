@@ -4,7 +4,7 @@ Here we provide the inference and training code. If you solely plan to do infere
 
 Check the [biodenoising web page](https://earthspecies.github.io/biodenoising/) for demos and more info. 
 
-The proposed model is based on the Demucs architecture, originally proposed for music source-separation and [real-time speech enhancement](https://github.com/facebook/denoiser). 
+The proposed model is based on the Demucs architecture, originally proposed for music source-separation and [real-time audio enhancement](https://github.com/facebook/denoiser). 
 
 We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
 
@@ -49,7 +49,7 @@ python -m biodenoising.denoiser.live
 ```
 
 In your favorite video conference call application, just select "Soundflower (2ch)"
-as input to enjoy your denoised speech.
+as input to enjoy your denoised audio.
 
 Watch our live demo presentation in the following link: [Demo][demo].
 
@@ -95,10 +95,10 @@ python -m biodenoising.denoiser.live -f 2
 You can increase to `-f 3` or more if needed, but each increase will add 16ms of extra latency.
 
 
-### Denoising received speech
+### Denoising received audio
 
-You can also denoise received speech, but you won't be able to both denoise your own speech
-and the received speech (unless you have a really beefy computer and enough loopback
+You can also denoise received audio, but you won't be able to both denoise your own audio
+and the received audio (unless you have a really beefy computer and enough loopback
 audio interfaces). This can be achieved by selecting the loopback interface as
 the audio output of your VC software and then running
 ```bash
@@ -118,13 +118,13 @@ Note that the path given to `--model_path` should be obtained from one of the `b
 It is also possible to use pre-trained model, using  `--biodenoising16k_dns48`.
  For more details regarding possible arguments, please see:
 ```
-usage: biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --biodenoising16k_dns48 ]
+usage: python -m biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --biodenoising16k_dns48 ]
                         [--device DEVICE] [--dry DRY]
                         [--num_workers NUM_WORKERS] [--streaming]
                         [--output OUT_DIR] [--batch_size BATCH_SIZE] [-v]
                         [--input NOISY_DIR]
 
-Speech enhancement using biodenoising - Generate enhanced files
+Animal vocalization denoising using biodenoising - Generate enhanced files
 
 optional arguments:
   -h, --help                  show this help message and exit
@@ -183,6 +183,96 @@ Then we can train the model:
 ```
 python train.py dset=biodenoising16k_biodenoising16k_dns48_none_step0 seed=0
 ```
+### Domain Adaptation
+
+Biodenoising is a generic tool that may fail in some cases. In order to improve the performance of the model in a specific domain, we can leverage domain adaptation. The adaptation process involves multiple steps of training on pseudo-clean targets to fine-tune the model for your specific audio domain.
+
+#### Basic Usage
+
+```bash
+python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/noisy/audio/ --out_dir /path/to/output/directory/
+```
+
+#### Advanced Options
+
+The adaptation script supports numerous parameters to fine-tune the adaptation process:
+
+```
+usage: python adapt.py [-h] [--steps STEPS] [--noisy_dir NOISY_DIR] [--noise_dir NOISE_DIR]
+                      [--test_dir TEST_DIR] [--out_dir OUT_DIR] [--noisy_estimate]
+                      [-v] [--method {biodenoising16k_dns48}] [--segment SEGMENT]
+                      [--highpass HIGHPASS] [--peak_height PEAK_HEIGHT]
+                      [--transform {none,time_scale}] [--revecho REVECHO]
+                      [--use_top USE_TOP] [--num_valid NUM_VALID] [--antialiasing]
+                      [--force_sample_rate FORCE_SAMPLE_RATE]
+                      [--time_scale_factor TIME_SCALE_FACTOR] [--noise_reduce]
+                      [--amp_scale] [--interactive] [--window_size WINDOW_SIZE]
+                      [--device DEVICE] [--dry DRY] [--num_workers NUM_WORKERS]
+                      [-c CONFIG]
+
+Adaptation parameters:
+  --steps STEPS          Number of steps to use for adaptation (default: 5)
+  --noisy_dir NOISY_DIR  Path to the directory with noisy wav files
+  --noise_dir NOISE_DIR  Path to the directory with noise wav files
+  --test_dir TEST_DIR    For evaluation: path to directory containing clean.json and noise.json files
+  --out_dir OUT_DIR      Directory for enhanced wav files (default: "enhanced")
+  --noisy_estimate       Compute noise as the difference between noisy and estimated signal
+  
+Model parameters:
+  --method {biodenoising16k_dns48}
+                        Method to use for denoising (default: "biodenoising16k_dns48")
+  --device DEVICE        Device to use (default: "cuda")
+  --dry DRY              Dry/wet knob coefficient. 0 is only denoised, 1 only input signal (default: 0)
+
+Audio processing:
+  --segment SEGMENT      Minimum segment size in seconds (default: 4)
+  --highpass HIGHPASS    Apply a highpass filter with this cutoff before separating (default: 20)
+  --peak_height PEAK_HEIGHT
+                        Filter segments with rms lower than this value (default: 0.008)
+  --transform {none,time_scale}
+                        Transform input by pitch shifting or time scaling (default: "none")
+  --revecho REVECHO      Revecho probability (default: 0)
+  --antialiasing         Use an antialiasing filter when using time scaling (default: False)
+  --force_sample_rate FORCE_SAMPLE_RATE
+                        Force the model to take samples of this sample rate
+  --time_scale_factor TIME_SCALE_FACTOR
+                        If model has different sample rate, play audio slower/faster with this factor before resampling to the model sample rate
+  --noise_reduce         Use noisereduce preprocessing
+  --amp_scale            Scale to the amplitude of the input
+  --window_size WINDOW_SIZE
+                        Size of the window for continuous processing (default: 0)
+
+Training options:
+  --use_top USE_TOP      Use the top ratio of files for training, sorted by rms (default: 1.0)
+  --num_valid NUM_VALID  Number of files to use for validation (default: 0)
+  --interactive          Pause at each step to allow deleting files and continue
+  --num_workers NUM_WORKERS
+                        Number of workers (default: 5)
+
+Configuration:
+  -c CONFIG, --config CONFIG
+                        Path to YAML configuration file (default: "biodenoising/conf/config_adapt.yaml")
+  -v, --verbose          Enable verbose logging
+```
+
+The option `--interactive` allows for a manual inspection of the generated files and deletion of files for which the model is not performing well i.e. active learning.
+
+#### Example Workflow
+
+1. **Collect domain-specific noisy audio**: Gather audio samples from your target domain
+2. **Run adaptation**:
+   ```bash
+   python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/domain/audio/ --out_dir ./adapted_model/ --steps 3 --segment 2 --highpass 100
+   ```
+3. **Use your adapted model**: The adaptation process creates a fine-tuned model in the output directory
+
+#### Tips for Effective Adaptation
+
+- Use at least 5-10 minutes of audio from your target domain
+- For wildlife recordings with specific frequency ranges, adjust the `--highpass` parameter
+- If your recordings have specific noise characteristics, consider providing examples in `--noise_dir`
+- The adaptation process works best with audio that has a good signal-to-noise ratio
+- Use `--interactive` mode to inspect and manually filter generated files during adaptation
 
 ## Citation
 If you use the code in your research, then please cite it as:

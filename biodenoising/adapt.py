@@ -516,13 +516,11 @@ def get_chunks(audio, noise, sample_rate, start_end, duration=4., compute_noise=
 
     audio_signal = []
     for idx in new_start_stop:
-        
-    # audio_signal=[audio[...,slice(int(idx[0]), np.minimum(int(idx[0])+duration_samples,int(idx[1])))] for idx in new_start_stop]
-    
-    # new_audio_signal = []
-    # if amplitude_augment:
-    #     for i, audio in enumerate(audio_signal):
-    #         audio = audio * np.random.uniform(0.9, 1.1)
+        audio_signal=[audio[...,slice(int(idx[0]), np.minimum(int(idx[0])+duration_samples,int(idx[1])))] for idx in new_start_stop]
+        new_audio_signal = []
+        if amplitude_augment:
+            for i, audio in enumerate(audio_signal):
+                audio = audio * np.random.uniform(0.9, 1.1)
     
     ### noise
     audio_noise = None
@@ -731,7 +729,7 @@ def train(args,step=0):
     else:
         cv_loader = None
     
-    if os.path.exists(args.test_dir):
+    if hasattr(args, 'test_dir') and args.test_dir is not None and os.path.exists(args.test_dir):
         del kwargs_valid["exclude"]
         del kwargs_valid["exclude_noise"]
         del kwargs_valid["rng"]
