@@ -81,7 +81,8 @@ class Audioset(torch.utils.data.Dataset):
     def __init__(self, files=None, length=None, stride=None,
                 pad=True, with_path=False, sample_rate=None,
                 channels=None, convert=False, repeat_prob=0.5, 
-                random_repeat=False, random_pad=False, use_subset=False, random_obj=None):
+                random_repeat=False, random_pad=False, use_subset=False, 
+                random_obj=None, resample_to_sr=None):
         """
         files should be a list [(file, length)]
         """
@@ -104,6 +105,7 @@ class Audioset(torch.utils.data.Dataset):
         self.random_pad = random_pad
         self.random_obj = random_obj if random_obj is not None else random.Random(0)
         self.use_old = True if 'frame_offset' in inspect.getfullargspec(torchaudio.load)[0] else False
+        self.resample_to_sr = resample_to_sr
         
         for idx, (file, file_length) in enumerate(self.files):
             subset = os.path.basename(file).split('_')[0]
@@ -162,14 +164,17 @@ class Audioset(torch.utils.data.Dataset):
             out, sr = torchaudio.load(filename, frame_offset=offset, num_frames=nframes)
         else:
             out, sr = torchaudio.load(filename, offset=offset, num_frames=nframes)
+            
         target_sr = self.sample_rate or sr
         target_channels = self.channels or out.shape[0]
-        if sr != target_sr:
-            raise RuntimeError(f"Expected {filename} to have sample rate of "
-                            f"{target_sr}, but got {sr}")
+        if self.resample_to_sr and sr != self.resample_to_sr:
+            target_sr = self.resample_to_sr
+            # Use convert_audio function to resample
+            out = convert_audio(out, sr, target_sr, target_channels)
+            sr = target_sr
         if out.shape[0] != target_channels:
-            raise RuntimeError(f"Expected {fulename} to have channels of "
-                            f"{target_channels}, but got {out.shape[0]}")
+            ### take the mean of the channels
+            out = out.mean(dim=0, keepdim=True)
         if nframes > out.shape[-1]:
             out = repeat_and_pad(out, self.length, repeat_prob=self.repeat_prob, random_repeat=self.random_repeat, random_pad=self.random_pad, random_obj=self.random_obj)
         if self.with_path:

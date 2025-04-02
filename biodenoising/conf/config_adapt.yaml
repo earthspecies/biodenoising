@@ -23,6 +23,13 @@ random_gain: True # random gain
 low_gain: 0.1 # low gain
 high_gain: 1. # high gain
 parallel_noise: False # mix with noise from the same file -> for domain adaptation
+annotations: False # use annotations to extract segments
+annotations_begin_column: Begin # column name for segment start time in annotation files
+annotations_end_column: End # column name for segment end time in annotation files
+annotations_label_column: None # column name for segment label in annotation files
+annotations_label_value: None # filter annotations by this label value
+annotations_extension: .csv # extension of annotation files
+
 
 # Dataset Augmentation
 remix: false   # remix noise and clean

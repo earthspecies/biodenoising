@@ -142,7 +142,7 @@ class Solver(object):
 
         if load_from:
             logger.info(f'Loading checkpoint model: {load_from}')
-            package = torch.load(load_from, 'cpu')
+            package = torch.load(load_from, 'cpu', weights_only=False)
             if load_best:
                 self.model.load_state_dict(package['best_state'])
             else:
@@ -155,13 +155,13 @@ class Solver(object):
             if keep_history:
                 self.history = package['history']
                 if self.scheduler is not None:
-                    self.scheduler.last_step = len(self.history)  * len(tr_loader)
+                    self.scheduler.last_step = len(self.history)  * len(self.tr_loader)
             self.best_state = package['best_state']
         continue_pretrained = self.args.continue_pretrained
         if continue_pretrained:
             logger.info("Fine tuning from pre-trained model %s", continue_pretrained)
             if continue_pretrained.endswith(".th"):
-                package = torch.load(continue_pretrained, 'cpu')
+                package = torch.load(continue_pretrained, 'cpu', weights_only=False)
                 self.model.load_state_dict(package['model']['state'])
             else:
                 if self.args.model=="cleanunet":
