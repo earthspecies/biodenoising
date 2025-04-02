@@ -183,6 +183,7 @@ Then we can train the model:
 ```
 python train.py dset=biodenoising16k_biodenoising16k_dns48_none_step0 seed=0
 ```
+
 ### Domain Adaptation
 
 Biodenoising is a generic tool that may fail in some cases. In order to improve the performance of the model in a specific domain, we can leverage domain adaptation. The adaptation process involves multiple steps of training on pseudo-clean targets to fine-tune the model for your specific audio domain.
@@ -200,23 +201,31 @@ The adaptation script supports numerous parameters to fine-tune the adaptation p
 ```
 usage: python adapt.py [-h] [--steps STEPS] [--noisy_dir NOISY_DIR] [--noise_dir NOISE_DIR]
                       [--test_dir TEST_DIR] [--out_dir OUT_DIR] [--noisy_estimate]
-                      [-v] [--method {biodenoising16k_dns48}] [--segment SEGMENT]
-                      [--highpass HIGHPASS] [--peak_height PEAK_HEIGHT]
+                      [--cfg CONFIG] [--epochs EPOCHS] [-v] [--method {biodenoising16k_dns48}] 
+                      [--segment SEGMENT] [--highpass HIGHPASS] [--peak_height PEAK_HEIGHT]
                       [--transform {none,time_scale}] [--revecho REVECHO]
                       [--use_top USE_TOP] [--num_valid NUM_VALID] [--antialiasing]
                       [--force_sample_rate FORCE_SAMPLE_RATE]
                       [--time_scale_factor TIME_SCALE_FACTOR] [--noise_reduce]
                       [--amp_scale] [--interactive] [--window_size WINDOW_SIZE]
                       [--device DEVICE] [--dry DRY] [--num_workers NUM_WORKERS]
-                      [-c CONFIG]
+                      [--annotations] [--annotations_begin_column ANNOTATIONS_BEGIN_COLUMN]
+                      [--annotations_end_column ANNOTATIONS_END_COLUMN]
+                      [--annotations_label_column ANNOTATIONS_LABEL_COLUMN]
+                      [--annotations_label_value ANNOTATIONS_LABEL_VALUE]
+                      [--annotations_extension ANNOTATIONS_EXTENSION]
+                      [--processed_dir PROCESSED_DIR]
 
 Adaptation parameters:
   --steps STEPS          Number of steps to use for adaptation (default: 5)
+  --epochs EPOCHS        Number of epochs per step (default: 5)
   --noisy_dir NOISY_DIR  Path to the directory with noisy wav files
   --noise_dir NOISE_DIR  Path to the directory with noise wav files
   --test_dir TEST_DIR    For evaluation: path to directory containing clean.json and noise.json files
   --out_dir OUT_DIR      Directory for enhanced wav files (default: "enhanced")
   --noisy_estimate       Compute noise as the difference between noisy and estimated signal
+  --processed_dir PROCESSED_DIR
+                        Directory for storing preprocessed audio segments
   
 Model parameters:
   --method {biodenoising16k_dns48}
@@ -242,6 +251,19 @@ Audio processing:
   --window_size WINDOW_SIZE
                         Size of the window for continuous processing (default: 0)
 
+Annotation options:
+  --annotations          Use annotation files to extract segments from audio files (default: False)
+  --annotations_begin_column ANNOTATIONS_BEGIN_COLUMN
+                        Column name for segment start time in annotation files (default: "Begin")
+  --annotations_end_column ANNOTATIONS_END_COLUMN
+                        Column name for segment end time in annotation files (default: "End")
+  --annotations_label_column ANNOTATIONS_LABEL_COLUMN
+                        Column name for segment label in annotation files (default: None)
+  --annotations_label_value ANNOTATIONS_LABEL_VALUE
+                        Filter annotations by this label value (default: None)
+  --annotations_extension ANNOTATIONS_EXTENSION
+                        Extension of annotation files (default: ".csv")
+
 Training options:
   --use_top USE_TOP      Use the top ratio of files for training, sorted by rms (default: 1.0)
   --num_valid NUM_VALID  Number of files to use for validation (default: 0)
@@ -250,8 +272,7 @@ Training options:
                         Number of workers (default: 5)
 
 Configuration:
-  -c CONFIG, --config CONFIG
-                        Path to YAML configuration file (default: "biodenoising/conf/config_adapt.yaml")
+  --cfg CONFIG           Path to YAML configuration file (default: "biodenoising/conf/config_adapt.yaml")
   -v, --verbose          Enable verbose logging
 ```
 
@@ -273,6 +294,16 @@ The option `--interactive` allows for a manual inspection of the generated files
 - If your recordings have specific noise characteristics, consider providing examples in `--noise_dir`
 - The adaptation process works best with audio that has a good signal-to-noise ratio
 - Use `--interactive` mode to inspect and manually filter generated files during adaptation
+
+#### Using Annotations for Targeted Adaptation
+
+The adaptation process supports using annotation files to extract specific segments:
+
+```bash
+python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/audio/ --out_dir ./adapted_model/ --annotations --annotations_label_column "Call_Type" --annotations_label_value "Whistle"
+```
+
+This allows you to target adaptation to specific vocalizations or sound events in your recordings.
 
 ## Citation
 If you use the code in your research, then please cite it as:
