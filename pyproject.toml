@@ -11,12 +11,12 @@ name = 'biodenoising'
 description = "Animal vocalization denoising"
 
 requires-python = '>=3.8.0'
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Marius Miron", email="info@mariusmiron.com" },
 ]
 readme = "README.md"
-dependencies = ['julius', 'librosa, 'norbert', 'numpy>=1.19', 'six', 'sounddevice>=0.4', 'torch>=1.5', 'torchaudio>=0.5', 'openunmix', 'asteroid','einops', 'omegaconf==1.4.1', 'noisereduce','scikit-fuzzy','prosemble']
+dependencies = ['julius', 'librosa', 'norbert', 'numpy>=1.19', 'six', 'sounddevice>=0.4', 'torch>=1.5', 'torchaudio>=0.5', 'openunmix', 'asteroid','einops', 'omegaconf==1.4.1', 'noisereduce','scikit-fuzzy','prosemble']
 
 classifiers=[
         'Topic :: Multimedia :: Sound/Audio :: Analysis',
@@ -41,7 +41,7 @@ Issues = 'https://github.com/earthspecies/biodenoising/issues'
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["biodenoising","biodenoising.denoiser","biodenoising.datasets","biodenoising.conf"]
+include = ["biodenoising","biodenoising.adapt","biodenoising.denoiser","biodenoising.datasets","biodenoising.conf"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
