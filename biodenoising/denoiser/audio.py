@@ -163,7 +163,7 @@ class Audioset(torch.utils.data.Dataset):
             raise RuntimeError(f"Expected {filename} to have sample rate of "
                             f"{target_sr}, but got {sr}")
         if out.shape[0] != target_channels:
-            raise RuntimeError(f"Expected {fulename} to have channels of "
+            raise RuntimeError(f"Expected {filename} to have channels of "
                             f"{target_channels}, but got {out.shape[0]}")
         if nframes > out.shape[-1]:
             out = repeat_and_pad(out, self.length, repeat_prob=self.repeat_prob, random_repeat=self.random_repeat, random_pad=self.random_pad, random_obj=self.random_obj)
