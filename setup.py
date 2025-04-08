@@ -30,7 +30,9 @@ REQUIRED = [
     'omegaconf==1.4.1',
     'noisereduce',
     'scikit-fuzzy',
-    'prosemble'
+    'prosemble',
+    'librosa',
+    'norbert'
 ]
 
 REQUIRED_LINKS = [

@@ -10,3 +10,5 @@ omegaconf==1.4.1
 noisereduce
 scikit-fuzzy 
 prosemble
+librosa
+norbert
