@@ -114,6 +114,7 @@ def write(wav, filename, sr=16_000):
 
 
 def get_dataset(noisy_dir, sample_rate, channels, keep_original_sr):
+    resample_to_sr = sample_rate if not keep_original_sr else None
     if args.noisy_dir:
         files = biodenoising.denoiser.audio.find_audio_files(noisy_dir)
     else:
@@ -122,17 +123,18 @@ def get_dataset(noisy_dir, sample_rate, channels, keep_original_sr):
             "Skipping denoising.")
         return None
     return biodenoising.denoiser.audio.Audioset(files, with_path=True,
-                    sample_rate=sample_rate, channels=channels, convert=True, resample_to_sr=not keep_original_sr)
+                    sample_rate=sample_rate, channels=channels, convert=True, resample_to_sr=resample_to_sr)
 
 
-def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, args):
+def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, data_sample_rate, args):
+    save_sr = data_sample_rate if args.keep_original_sr else sample_rate
     ### process
     if args.noise_reduce or args.method == 'noisereduce':
         noisy_signals = noisy_signals[0,0].to('cpu').numpy()  
-        noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=sample_rate)
+        noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=save_sr)
         noisy_signals = torch.from_numpy(noisy_signals[None,None,:]).to(args.device).float()
     if args.method == 'noisereduce':
-        save_wavs(noisy_signals, noisy_signals, filenames, os.path.join(out_dir,args.method), sr=sample_rate)
+        save_wavs(noisy_signals, noisy_signals, filenames, os.path.join(out_dir,args.method), sr=save_sr)
     else:
         ### Forward
         estimate = get_estimate(model, noisy_signals, args)
@@ -145,7 +147,7 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, ar
         if args.transform == 'none':
             if not args.model_path:
                 experiment += '_none'
-            save_wavs(estimate, noisy_signals, filenames, os.path.join(out_dir,experiment), sr=sample_rate)
+            save_wavs(estimate, noisy_signals, filenames, os.path.join(out_dir,experiment), sr=save_sr)
         else:
             estimate_sum = estimate
             #noisy_signals = noisy_signals[None,None,:].float()
@@ -175,7 +177,7 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, ar
                     
                 #save_wavs(estimate_write, noisy_signals, filenames, os.path.join(out_dir,args.method+'_'+args.transform + str(i)) , sr=sample_rate)
                         
-            save_wavs(estimate_sum/4., noisy_signals, filenames, os.path.join(out_dir,experiment+'_time_scale'), sr=sample_rate)
+            save_wavs(estimate_sum/4., noisy_signals, filenames, os.path.join(out_dir,experiment+'_time_scale'), sr=save_sr)
                     
 
 
@@ -239,12 +241,12 @@ def denoise(args, model=None, local_out_dir=None):
         pendings = []
         for data in iterator:
             # Get batch data
-            noisy_signals, filenames, _ = data
+            noisy_signals, filenames, data_sample_rate = data
             noisy_signals = noisy_signals.to(args.device)
             if args.device == 'cpu' and args.num_workers > 1:
                 pendings.append(
                     pool.submit(_estimate_and_save,
-                                model, noisy_signals, filenames, out_dir, sample_rate, args))
+                                model, noisy_signals, filenames, out_dir, sample_rate, data_sample_rate, args))
             else:
                 if args.window_size > 0:
                     import asteroid
@@ -258,9 +260,9 @@ def denoise(args, model=None, local_out_dir=None):
                         enable_grad=False,  # Set gradient calculation on of off (see torch.set_grad_enabled)
                     )
                     ola_model.window = ola_model.window.to(args.device)
-                    _estimate_and_save(ola_model, noisy_signals, filenames, out_dir, sample_rate, args)
+                    _estimate_and_save(ola_model, noisy_signals, filenames, out_dir, sample_rate, data_sample_rate, args)
                 else:
-                    _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, args)
+                    _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, data_sample_rate, args)
 
         if pendings:
             print('Waiting for pending jobs...')

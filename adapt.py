@@ -41,6 +41,7 @@ parser.add_argument('--revecho', type=float, default=0,help='revecho probability
 parser.add_argument("--use_top", default=1., type=float, help="use the top ratio of files for training, sorted by their rms")
 parser.add_argument('--num_valid', type=float, default=0,help='the number of files to use for validation')
 parser.add_argument('--antialiasing', action="store_true",help="use an antialiasing filter when time scaling back")
+parser.add_argument('--keep_original_sr', action="store_true",help="keep the original sample rate of the audio rather than the model sample rate")
 parser.add_argument("--force_sample_rate", default=0, type=int, help="Force the model to take samples of this sample rate")
 parser.add_argument("--time_scale_factor", default=0, type=int, help="If the model has a different sample rate, play the audio slower or faster with this factor. If force_sample_rate this automatically changes.")
 parser.add_argument('--noise_reduce', action="store_true",help="use noisereduce preprocessing")

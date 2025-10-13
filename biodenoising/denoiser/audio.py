@@ -165,7 +165,6 @@ class Audioset(torch.utils.data.Dataset):
         else:
             out, sr = torchaudio.load(filename, offset=offset, num_frames=nframes)
             
-        target_sr = self.sample_rate or sr
         target_channels = self.channels or out.shape[0]
         if self.resample_to_sr and sr != self.resample_to_sr:
             target_sr = self.resample_to_sr
