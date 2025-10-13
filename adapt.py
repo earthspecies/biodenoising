@@ -49,6 +49,7 @@ parser.add_argument('--amp_scale', action="store_true",help="scale to the amplit
 parser.add_argument('--interactive', action="store_true",help="pause at each step to allow the user to delete some files and continue")
 parser.add_argument("--window_size", type=int, default=0,
                     help="size of the window for continuous processing")
+parser.add_argument('--selection_table', action="store_true", help="Enable event masking via selection tables (csv/tsv/txt) located next to audio files.")
 parser.add_argument('--device', default="cuda")
 parser.add_argument('--dry', type=float, default=0,
                     help='dry/wet knob coefficient. 0 is only denoised, 1 only input signal.')

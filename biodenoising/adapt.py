@@ -16,6 +16,11 @@ from pathlib import Path
 import argparse
 import sys
 import yaml
+from .selection_table import (
+    build_mask_from_events,
+    find_selection_table_for,
+    load_events_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +230,52 @@ def get_dataset(noisy_dir, sample_rate, channels, args=None):
                     convert=True, resample_to_sr=resample_to_sr)
 
 
+def _compute_norms_from_events(signal: torch.Tensor, events, sample_rate: int):
+    """
+    Compute RMS norms for each (start, end) in seconds using the provided signal.
+    Returns (norms_list, start_end_array)
+    """
+    if signal.ndim == 3:
+        signal = signal.squeeze(0).squeeze(0)
+    length_frames = signal.shape[-1]
+    duration_s = float(length_frames) / float(sample_rate) if sample_rate > 0 else 0.0
+    norms = []
+    start_end = []
+    # Normalize and clip events to [0, duration]
+    cleaned = []
+    for start_s, end_s in events:
+        s = float(max(0.0, min(duration_s, start_s)))
+        e = float(max(0.0, min(duration_s, end_s)))
+        if e > s:
+            cleaned.append((s, e))
+    # Sort and merge overlapping/adjacent intervals (optional but safer)
+    cleaned.sort(key=lambda x: x[0])
+    merged = []
+    for s, e in cleaned:
+        if not merged or s > merged[-1][1]:
+            merged.append([s, e])
+        else:
+            merged[-1][1] = max(merged[-1][1], e)
+    # Compute RMS per interval; fallback to full-length if empty
+    if not merged and duration_s > 0:
+        merged = [[0.0, duration_s]]
+    for s, e in merged:
+        start_idx = int(round(s * sample_rate))
+        end_idx = int(round(e * sample_rate))
+        start_idx = max(0, min(length_frames, start_idx))
+        end_idx = max(0, min(length_frames, end_idx))
+        if end_idx <= start_idx:
+            continue
+        seg = signal[start_idx:end_idx]
+        if seg.numel() == 0:
+            continue
+        rms = torch.sqrt(torch.mean(seg.float() ** 2)).item()
+        norms.append(rms)
+        start_end.append((s, e))
+    import numpy as _np
+    return _np.asarray(norms, dtype=float), _np.asarray(start_end, dtype=float)
+
+
 def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args):
     save_sr = _ensure_int_sr(data_sample_rate) if args.keep_original_sr else int(sample_rate)
     ### process
@@ -237,6 +288,17 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
     estimate = get_estimate(model, noisy_signals, args)
 
     if args.transform == 'none':
+        # Apply selection table mask if requested
+        if getattr(args, 'selection_table', False):
+            masked_estimates = []
+            for i, fn in enumerate(filenames):
+                table = find_selection_table_for(fn)
+                events = load_events_seconds(table)
+                length_frames = estimate.shape[-1]
+                mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate.device)
+                mask = mask_1d.view(1, 1, -1)
+                masked_estimates.append(estimate[i:i+1] * mask)
+            estimate = torch.cat(masked_estimates, dim=0) if masked_estimates else estimate
         save_wavs(estimate, filenames, os.path.join(out_dir,args.experiment), sr=save_sr)
     else:
         estimate_sum = estimate
@@ -266,8 +328,21 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
                 estimate_sum += estimate_write
                 
             #save_wavs(estimate_write, filenames, os.path.join(out_dir,args.method+'_'+args.transform + str(i)) , sr=sample_rate)
-                    
-        save_wavs(estimate_sum/4., filenames, os.path.join(out_dir,args.experiment), sr=save_sr)
+        
+        # Average aggregated estimate
+        estimate_out = estimate_sum/4.
+        # Apply selection table mask if requested (on final aggregated estimate)
+        if getattr(args, 'selection_table', False):
+            masked_estimates = []
+            for i, fn in enumerate(filenames):
+                table = find_selection_table_for(fn)
+                events = load_events_seconds(table)
+                length_frames = estimate_out.shape[-1]
+                mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate_out.device)
+                mask = mask_1d.view(1, 1, -1)
+                masked_estimates.append(estimate_out[i:i+1] * mask)
+            estimate_out = torch.cat(masked_estimates, dim=0) if masked_estimates else estimate_out
+        save_wavs(estimate_out, filenames, os.path.join(out_dir,args.experiment), sr=save_sr)
         
     return [],[]        
 
@@ -308,61 +383,111 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
     os.makedirs(csv_path, exist_ok=True)
     full_estimate_noise = noisy_signals - estimate
     if args.transform == 'none':
-        norms, start_end = get_start_end(estimate.to('cpu').numpy().squeeze(), save_sr)
-        res = []
-        res_noise = []
-        if len(start_end) > 0:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-                for i in range(len(start_end)):
-                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
-    
-            ### save wav
-            noise = original_noisy_signals-estimate
-            if args.noise_dir is None:
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                if args.noisy_estimate:
-                    ### trim the first 0.5 and the last 0.5 of the noise
-                    if noise.shape[-1] > save_sr * 2:
-                        trim_samples = int(save_sr * 1)
-                        noise = noise[..., trim_samples:-trim_samples]                        
-                    noise = enhance_noise(noise, estimate)  
-                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
-                    res_noise.append([allfnoise[0],1., out_subdir])
-            if args.revecho > 0:
-                estimate = revecho(torch.stack((estimate,estimate)))[0]
-            if args.amp_scale:
-                estimate = estimate * max_value / estimate.abs().max()
-            estimate_chunks, estimate_noise_chunks = get_chunks(estimate, noise, save_sr, start_end, duration=args.segment, compute_noise=True)
-            for j, chunk in enumerate(estimate_chunks):
-                allf = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
-                res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise_chunks is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise_chunks):
-                    allfnoise = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
-                    res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
-            return res, res_noise    
-        else:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-            if args.noise_dir is None:
+        if getattr(args, 'selection_table', False):
+            # Use selection tables to derive start_end and norms
+            events = load_events_seconds(find_selection_table_for(filenames[0]))
+
+            ### mask the estimate
+            length_frames = estimate.shape[-1]
+            mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate.device)
+            mask = mask_1d.view(1, 1, -1)
+            estimate = estimate * mask
+
+            # Normalize events right after loading (N, 2) float array
+            events = np.asarray(events, dtype=float).reshape(-1, 2)
+
+            norms, start_end = _compute_norms_from_events(estimate.to('cpu'), events, save_sr)
+            res = []
+            res_noise = []
+            if len(start_end) > 0:
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                    for i in range(len(start_end)):
+                        f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+                ### save wav
                 noise = original_noisy_signals-estimate
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                if args.revecho > 0:
+                    estimate = revecho(torch.stack((estimate,estimate)))[0]
+                if args.amp_scale:
+                    estimate = estimate * max_value / estimate.abs().max()
+                estimate_chunks, estimate_noise_chunks = get_chunks(estimate, noise, save_sr, start_end, duration=args.segment, compute_noise=True)
+                for j, chunk in enumerate(estimate_chunks):
+                    allf = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
+                    res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
+                if args.noise_dir is None:
+                    if estimate_noise_chunks is not None and len(estimate_noise_chunks) > 0:
+                        for j, chunk in enumerate(estimate_noise_chunks):
+                            allfnoise = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
+                            res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
+                    else:
+                        # Extract noise between events with triangular windowing
+                        stitched_noise = extract_noise_between_events(noise, start_end, save_sr, window_type='triangular')
+                        allfnoise = save_wavs(stitched_noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                        res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
+                return res, res_noise  
+            else:
+                ### everything is noise 
+                allfnoise = save_wavs(original_noisy_signals, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
                 res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
-            return res,res_noise
+                return res, res_noise
+        else:
+            norms, start_end = get_start_end(estimate.to('cpu').numpy().squeeze(), save_sr)
+            res = []
+            res_noise = []
+            if len(start_end) > 0:
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                    for i in range(len(start_end)):
+                        f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+        
+                ### save wav
+                noise = original_noisy_signals-estimate
+                if args.noise_dir is None:
+                    for i in range(3):
+                        signal = get_estimate(model, noise, args)
+                        noise = noise - signal
+                    noise = 3 * noise  
+                    noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
+                    if args.noisy_estimate:
+                        ### trim the first 0.5 and the last 0.5 of the noise
+                        if noise.shape[-1] > save_sr * 2:
+                            trim_samples = int(save_sr * 1)
+                            noise = noise[..., trim_samples:-trim_samples]                        
+                        noise = enhance_noise(noise, estimate)  
+                        allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                        res_noise.append([allfnoise[0],1., out_subdir])
+                if args.revecho > 0:
+                    estimate = revecho(torch.stack((estimate,estimate)))[0]
+                if args.amp_scale:
+                    estimate = estimate * max_value / estimate.abs().max()
+                estimate_chunks, estimate_noise_chunks = get_chunks(estimate, noise, save_sr, start_end, duration=args.segment, compute_noise=True)
+                for j, chunk in enumerate(estimate_chunks):
+                    allf = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
+                    res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
+                if estimate_noise_chunks is not None and args.noise_dir is None:
+                    for j, chunk in enumerate(estimate_noise_chunks):
+                        allfnoise = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
+                        res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
+                return res, res_noise    
+            else:
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                if args.noise_dir is None:
+                    noise = original_noisy_signals-estimate
+                    for i in range(3):
+                        signal = get_estimate(model, noise, args)
+                        noise = noise - signal
+                    noise = 3 * noise  
+                    noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
+                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                    res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
+                return res,res_noise
 
     else:
         ### we sum all the results here
@@ -396,61 +521,110 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
         
         res = []
         res_noise = []
-        norms, start_end = get_start_end(estimate_sum.to('cpu').numpy().squeeze(), save_sr)
-        if len(start_end) > 0:
-            ### replace nans with minimum value
-            norms[np.isnan(norms)] = norms.min()
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-                for i in range(len(start_end)):
-                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
-    
-            ### save wav
-            noise = original_noisy_signals-estimate
-            if args.noise_dir is None:
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                if args.noisy_estimate:
-                    ### trim the first 0.5 and the last 0.5 of the noise
-                    if noise.shape[-1] > save_sr * 2:
-                        trim_samples = int(save_sr * 1)
-                        noise = noise[..., trim_samples:-trim_samples]                        
-                    noise = enhance_noise(noise, estimate)  
+        if getattr(args, 'selection_table', False):
+            events = load_events_seconds(find_selection_table_for(filenames[0]))
+            
+            ### mask the estimate
+            length_frames = estimate_sum.shape[-1]
+            mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate_sum.device)
+            mask = mask_1d.view(1, 1, -1)
+            estimate_sum = estimate_sum * mask
+
+            # Normalize events right after loading (N, 2) float array
+            events = np.asarray(events, dtype=float).reshape(-1, 2)
+
+            res = []
+            res_noise = []
+            norms, start_end = _compute_norms_from_events(estimate_sum.to('cpu'), events, save_sr)
+            if len(start_end) > 0:
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                    for i in range(len(start_end)):
+                        f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+                ### save wav
+                noise = original_noisy_signals-estimate_sum
+                if args.revecho > 0:
+                    estimate_sum = revecho(torch.stack((estimate_sum,estimate_sum)))[0]
+                if args.amp_scale:
+                    estimate_sum = estimate_sum * max_value / estimate_sum.abs().max()
+                estimate_chunks, estimate_noise_chunks = get_chunks(estimate_sum, noise/4., save_sr, start_end, duration=args.segment, compute_noise=True)
+                for j, chunk in enumerate(estimate_chunks):
+                    allf = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
+                    res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
+                if args.noise_dir is None:
+                    if estimate_noise_chunks is not None and len(estimate_noise_chunks) > 0:
+                        for j, chunk in enumerate(estimate_noise_chunks):
+                            allfnoise = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
+                            res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
+                    else:
+                        # Extract noise between events with triangular windowing
+                        stitched_noise = extract_noise_between_events(noise, start_end, save_sr, window_type='triangular')
+                        allfnoise = save_wavs(stitched_noise/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                        res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
+                return res, res_noise    
+            else:
+                ### everything is noise 
+                allfnoise = save_wavs(original_noisy_signals, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
+                return res, res_noise
+        else:
+            norms, start_end = get_start_end(estimate_sum.to('cpu').numpy().squeeze(), save_sr)
+            if len(start_end) > 0:
+                ### replace nans with minimum value
+                norms[np.isnan(norms)] = norms.min()
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                    for i in range(len(start_end)):
+                        f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
+        
+                ### save wav
+                noise = original_noisy_signals-estimate
+                if args.noise_dir is None:
+                    for i in range(3):
+                        signal = get_estimate(model, noise, args)
+                        noise = noise - signal
+                    noise = 3 * noise  
+                    noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
+                    if args.noisy_estimate:
+                        ### trim the first 0.5 and the last 0.5 of the noise
+                        if noise.shape[-1] > save_sr * 2:
+                            trim_samples = int(save_sr * 1)
+                            noise = noise[..., trim_samples:-trim_samples]                        
+                        noise = enhance_noise(noise, estimate)  
+                        allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
+                        res_noise.append([allfnoise[0],1., out_subdir])
+                if args.revecho > 0:
+                    estimate_sum = revecho(torch.stack((estimate_sum,estimate_sum)))[0]
+                if args.amp_scale:
+                    estimate_sum = estimate_sum * max_value / estimate_sum.abs().max()
+                estimate_sum_chunks, estimate_noise_chunks = get_chunks(estimate_sum, noise/4., save_sr, start_end, duration=args.segment, compute_noise=True)
+                for j, chunk in enumerate(estimate_sum_chunks):
+                    allf = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
+                    res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
+                if estimate_noise_chunks is not None and args.noise_dir is None:
+                    for j, chunk in enumerate(estimate_noise_chunks):
+                        allfnoise = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
+                        res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
+                return res, res_noise    
+            else:
+                ### save csv
+                filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
+                with open(filename, 'w') as f:
+                    f.write('start,end,rms\n')
+                if args.noise_dir is None:
+                    noise = original_noisy_signals-estimate
+                    for i in range(3):
+                        signal = get_estimate(model, noise, args)
+                        noise = noise - signal
+                    noise = 3 * noise  
+                    noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
                     allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
                     res_noise.append([allfnoise[0],1., out_subdir])
-            if args.revecho > 0:
-                estimate_sum = revecho(torch.stack((estimate_sum,estimate_sum)))[0]
-            if args.amp_scale:
-                estimate_sum = estimate_sum * max_value / estimate_sum.abs().max()
-            estimate_sum_chunks, estimate_noise_chunks = get_chunks(estimate_sum, noise/4., save_sr, start_end, duration=args.segment, compute_noise=True)
-            for j, chunk in enumerate(estimate_sum_chunks):
-                allf = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=save_sr)
-                res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise_chunks is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise_chunks):
-                    allfnoise = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=save_sr)
-                    res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
-            return res, res_noise    
-        else:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-            if args.noise_dir is None:
-                noise = original_noisy_signals-estimate
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
-                res_noise.append([allfnoise[0],1., out_subdir])
-            return res,res_noise
+                return res,res_noise
 
 def get_experiment_code(args,step):
     experiment = args.method + '_pretrained' if step==0 else args.method + '_step'+str(step)
@@ -620,6 +794,103 @@ def get_start_end(wav, sample_rate, smoothing_window=3, db_treshold=-40, min_dur
         norms = np.array([])
         start_end = np.array([])
     return norms, start_end
+
+
+def extract_noise_between_events(noise, start_end, sample_rate, window_type='triangular'):
+    """
+    Extract noise segments between events and stitch them together with a window.
+    Events are enlarged by 0.2s before and 0.4s after to ensure clean noise extraction.
+    
+    Parameters
+    ----------
+    noise : torch.Tensor
+        The noise signal tensor
+    start_end : np.ndarray
+        Array of (start, end) times in seconds
+    sample_rate : int
+        Sample rate of the audio
+    window_type : str
+        Type of window for stitching ('triangular', 'hann', 'hamming')
+    
+    Returns
+    -------
+    torch.Tensor
+        Stitched noise signal
+    """
+    if len(start_end) == 0:
+        return noise
+    
+    # Enlarge events by 0.2s before and 0.4s after, ensuring no negative timestamps
+    enlarged_events = []
+    for s, e in start_end:
+        # Enlarge: 0.2s before start, 0.4s after end
+        enlarged_start = max(0.0, s - 0.2)  # Ensure no negative start time
+        enlarged_end = e + 0.4
+        enlarged_events.append((enlarged_start, enlarged_end))
+    
+    # Convert to sample indices
+    start_stop = [[int(s * sample_rate), int(e * sample_rate)] for s, e in enlarged_events]
+    
+    # Find gaps between enlarged events
+    noise_segments = []
+    last_end = 0
+    
+    for start_idx, end_idx in start_stop:
+        if start_idx > last_end:
+            # Extract noise segment between events
+            segment = noise[..., last_end:start_idx]
+            if segment.shape[-1] > 0:
+                noise_segments.append(segment)
+        last_end = end_idx
+    
+    # Add noise after last event if there's remaining audio
+    if last_end < noise.shape[-1]:
+        segment = noise[..., last_end:]
+        if segment.shape[-1] > 0:
+            noise_segments.append(segment)
+    
+    if not noise_segments:
+        return noise
+    
+    # Stitch segments together with windowing
+    if len(noise_segments) == 1:
+        return noise_segments[0]
+    
+    # Create window for smooth transitions
+    if window_type == 'triangular':
+        window = torch.linspace(0, 1, 2, device=noise.device)
+    elif window_type == 'hann':
+        window = torch.hann_window(2, device=noise.device)
+    elif window_type == 'hamming':
+        window = torch.hamming_window(2, device=noise.device)
+    else:
+        window = torch.ones(2, device=noise.device)
+    
+    # Stitch with overlapping windows
+    overlap_samples = min(100, noise_segments[0].shape[-1] // 4)  # 100 samples or 1/4 of first segment
+    
+    stitched = noise_segments[0]
+    for i in range(1, len(noise_segments)):
+        current_segment = noise_segments[i]
+        
+        if overlap_samples > 0 and stitched.shape[-1] > overlap_samples and current_segment.shape[-1] > overlap_samples:
+            # Apply window to overlap region
+            fade_out = window[1:].flip(0)  # 1 to 0
+            fade_in = window[1:]  # 0 to 1
+            
+            # Fade out end of previous segment
+            stitched[..., -overlap_samples:] *= fade_out
+            
+            # Fade in start of current segment
+            current_segment[..., :overlap_samples] *= fade_in
+            
+            # Concatenate
+            stitched = torch.cat([stitched, current_segment], dim=-1)
+        else:
+            # Simple concatenation if no overlap possible
+            stitched = torch.cat([stitched, current_segment], dim=-1)
+    
+    return stitched
 
 
 def get_chunks(audio, noise, sample_rate, start_end, duration=4., compute_noise=True, merge=False, amplitude_augment=False):
@@ -1091,5 +1362,6 @@ def run_adaptation(args):
             args.model_path = args.checkpoint_file
             args.lr = args.lr * 0.5
     
+    # Final denoising step with selection table filtering if enabled
     denoise(args, step=step+1)  # Final denoising step, no need to return model
 

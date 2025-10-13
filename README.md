@@ -34,51 +34,6 @@ cd biodenoising
 pip install -r requirements.txt  
 ```
 
-## Live Denoising
-
-If you want to use `biodenoising` live, you will
-need a specific loopback audio interface.
-
-### Mac OS X
-
-On Mac OS X, this is provided by [Soundflower][soundflower].
-First install Soundflower, and then you can just run
-
-```bash
-python -m biodenoising.denoiser.live
-```
-
-In your favorite video conference call application, just select "Soundflower (2ch)"
-as input to enjoy your denoised audio.
-
-Watch our live demo presentation in the following link: [Demo][demo].
-
-### Linux (tested on Ubuntu 20.04)
-
-You can use the `pacmd` command and the `pavucontrol` tool:
-- run the following commands:
-```bash
-pacmd load-module module-null-sink sink_name=denoiser
-pacmd update-sink-proplist denoiser device.description=denoiser
-```
-This will add a `Monitor of Null Output` to the list of microphones to use. Select it as input in your software. 
-- Launch the `pavucontrol` tool. In the _Playback_ tab, after launching 
-`python -m biodenoising.denoiser.live --out INDEX_OR_NAME_OF_LOOPBACK_IFACE` and the software you want to denoise for (here an in-browser call), you should see both applications. For *denoiser* interface as Playback destination which will output the processed audio stream on the sink we previously created.
-
-### Other platforms
-
-At the moment, we do not provide official support for other OSes. However, if you
-have a a soundcard that supports loopback (for instance Steinberg products), you can try
-to make it work. You can list the available audio interfaces with `python -m sounddevice`.
-Then once you have spotted your loopback interface, just run
-```bash
-python -m biodenoising.denoiser.live --out INDEX_OR_NAME_OF_LOOPBACK_IFACE
-```
-By default, `biodenoising` will use the default audio input. You can change that with the `--in` flag.
-
-Note that on Windows you will need to replace `python` by `python.exe`.
-
-
 ### Troubleshooting bad quality in separation
 Biodenoising inherits the drawbacks of the denoiser implementation: 
 
@@ -93,18 +48,6 @@ You might experience issues with DDR3 memory. In that case you can trade overall
 python -m biodenoising.denoiser.live -f 2
 ```
 You can increase to `-f 3` or more if needed, but each increase will add 16ms of extra latency.
-
-
-### Denoising received audio
-
-You can also denoise received audio, but you won't be able to both denoise your own audio
-and the received audio (unless you have a really beefy computer and enough loopback
-audio interfaces). This can be achieved by selecting the loopback interface as
-the audio output of your VC software and then running
-```bash
-python -m biodenoising.denoiser.live --in "Soundflower (2ch)" --out "NAME OF OUT IFACE"
-```
-The way experiments are automatically named, as explained hereafter.
 
 ## Usage
 
@@ -122,7 +65,7 @@ usage: python -m biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --biodenois
                         [--device DEVICE] [--dry DRY]
                         [--num_workers NUM_WORKERS] [--streaming]
                         [--output OUT_DIR] [--batch_size BATCH_SIZE] [-v]
-                        [--input NOISY_DIR]
+                        [--input NOISY_DIR] [--selection_table] [--keep_original_sr]
 
 Animal vocalization denoising using biodenoising - Generate enhanced files
 
@@ -142,29 +85,9 @@ optional arguments:
   -v, --verbose               more loggging
   --input NOISY_DIR
                               directory including noisy wav files
+  --selection_table           Enable event masking via selection tables (csv/tsv/txt) located next to audio files
+  --keep_original_sr          Keep the original sample rate instead of resampling to model's sample rate
 ```
-
-## Online Evaluation
-This is from the original denoiser implementation: 
-
-Our online implementation is based on pure python code with some optimization of the streaming convolutions and transposed convolutions.
-We benchmark this implementation on a quad-core Intel i5 CPU at 2 GHz.
-The Real-Time Factor (RTF) of the proposed models are:
-
-| Model | Threads | RTF  |
-|-------|---------|------|
-| H=48  | 1       | 0.8  |
-| H=48  | 4       | 0.6  |
-
-In order to compute the RTF on your own CPU launch the following command:
-```
-python -m biodenoising.denoiser.demucs --hidden=48 --num_threads=1
-```
-The output should be something like this:
-```
-total lag: 41.3ms, stride: 16.0ms, time per frame: 12.2ms, delta: 0.21%, RTF: 0.8
-```
-Feel free to explore different settings, i.e. bigger models and more CPU-cores.
 
 ### Training
 
@@ -214,7 +137,7 @@ usage: python adapt.py [-h] [--steps STEPS] [--noisy_dir NOISY_DIR] [--noise_dir
                       [--annotations_label_column ANNOTATIONS_LABEL_COLUMN]
                       [--annotations_label_value ANNOTATIONS_LABEL_VALUE]
                       [--annotations_extension ANNOTATIONS_EXTENSION]
-                      [--processed_dir PROCESSED_DIR]
+                      [--processed_dir PROCESSED_DIR] [--selection_table] [--keep_original_sr]
 
 Adaptation parameters:
   --steps STEPS          Number of steps to use for adaptation (default: 5)
@@ -250,6 +173,8 @@ Audio processing:
   --amp_scale            Scale to the amplitude of the input
   --window_size WINDOW_SIZE
                         Size of the window for continuous processing (default: 0)
+  --selection_table      Enable event masking via selection tables (csv/tsv/txt) located next to audio files
+  --keep_original_sr     Keep the original sample rate instead of resampling to model's sample rate
 
 Annotation options:
   --annotations          Use annotation files to extract segments from audio files (default: False)
@@ -304,6 +229,25 @@ python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/audio/ --out
 ```
 
 This allows you to target adaptation to specific vocalizations or sound events in your recordings.
+
+#### Using Selection Tables for Event-Based Processing
+
+Both the denoising and adaptation processes support using selection tables for event-based processing:
+
+```bash
+# For denoising with selection tables
+python -m biodenoising.denoiser.denoise --input /path/to/audio/ --output /path/to/output/ --selection_table
+
+# For adaptation with selection tables
+python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/audio/ --out_dir ./adapted_model/ --selection_table
+```
+
+Selection tables are CSV, TSV, or TXT files located next to your audio files with the same base name. They should contain columns with start and end times in seconds. The system automatically detects columns with names like 'start', 'beginning', 'begin time', 'begin' for start times and 'end', 'end time' for end times.
+
+When `--selection_table` is enabled:
+- Only audio within the specified event intervals is processed for denoising
+- Noise extraction focuses on gaps between events (with 0.2s buffer before and 0.4s after each event)
+- The final output is masked to preserve only the denoised events
 
 ## Citation
 If you use the code in your research, then please cite it as:

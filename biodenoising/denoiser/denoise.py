@@ -13,6 +13,11 @@ import torchaudio
 import librosa
 import norbert
 
+from biodenoising.selection_table import (
+    build_mask_from_events,
+    find_selection_table_for,
+    load_events_seconds,
+)
 
 from .demucs import DemucsStreamer
 from .pretrained import add_model_flags, get_model
@@ -50,6 +55,7 @@ parser.add_argument("--method",choices=["demucs"], default="demucs",help="Method
 parser.add_argument("--transform",choices=["none", "time_scale"], default="none",help="Transform input by pitch shifting or time scaling")
 parser.add_argument("--sample_rate",choices=[16000], default=16000,help="Sample rate of the model")
 parser.add_argument("--keep_original_sr", action="store_true",help="keep the original sample rate of the audio rather than the model sample rate")
+parser.add_argument('--selection_table', action="store_true", help="Enable event masking via selection tables (csv/tsv/txt) located next to audio files.")
 parser.add_argument("--input", type=str, default=None,
                     help="path to the directory with noisy wav files")
 parser.add_argument("--window_size", type=int, default=0,
@@ -137,6 +143,16 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, da
     experiment = args.method 
 
     if args.transform == 'none':
+        if args.selection_table:
+            masked_estimates = []
+            for i, fn in enumerate(filenames):
+                table = find_selection_table_for(fn)
+                events = load_events_seconds(table)
+                length_frames = estimate.shape[-1]
+                mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate.device)
+                mask = mask_1d.view(1, 1, -1)
+                masked_estimates.append(estimate[i:i+1] * mask)
+            estimate = torch.cat(masked_estimates, dim=0) if masked_estimates else estimate
         save_wavs(estimate, noisy_signals, filenames, out_dir, sr=save_sr)
     else:
         experiment += '_'+args.transform
@@ -163,7 +179,18 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, da
             else:
                 estimate_sum += estimate_write
                                     
-        save_wavs(estimate_sum/4., noisy_signals, filenames, out_dir, sr=save_sr)
+        estimate_out = estimate_sum/4.
+        if args.selection_table:
+            masked_estimates = []
+            for i, fn in enumerate(filenames):
+                table = find_selection_table_for(fn)
+                events = load_events_seconds(table)
+                length_frames = estimate_out.shape[-1]
+                mask_1d = build_mask_from_events(length_frames, save_sr, events, estimate_out.device)
+                mask = mask_1d.view(1, 1, -1)
+                masked_estimates.append(estimate_out[i:i+1] * mask)
+            estimate_out = torch.cat(masked_estimates, dim=0) if masked_estimates else estimate_out
+        save_wavs(estimate_out, noisy_signals, filenames, out_dir, sr=save_sr)
                 
 
 
