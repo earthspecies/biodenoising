@@ -46,6 +46,7 @@ parser.add_argument('-v', '--verbose', action='store_const', const=logging.DEBUG
 parser.add_argument("--method",choices=["biodenoising16k_dns48","demucs", "cleanunet","demucsv4","noisereduce"], default="biodenoising16k_dns48",help="Method to use for denoising")
 parser.add_argument("--transform",choices=["none", "time_scale"], default="none",help="Transform input by pitch shifting or time scaling")
 parser.add_argument('--antialiasing', action="store_true",help="use an antialiasing filter when time scaling back")
+parser.add_argument('--keep_original_sr', action="store_true",help="keep the original sample rate of the audio rather than the model sample rate")
 parser.add_argument('--noise_reduce', action="store_true",help="use noisereduce preprocessing")
 parser.add_argument("--noisy_dir", type=str, default=None,
                     help="path to the directory with noisy wav files")
@@ -112,7 +113,7 @@ def write(wav, filename, sr=16_000):
     torchaudio.save(filename, wav.cpu(), sr)
 
 
-def get_dataset(noisy_dir, sample_rate, channels):
+def get_dataset(noisy_dir, sample_rate, channels, keep_original_sr):
     if args.noisy_dir:
         files = biodenoising.denoiser.audio.find_audio_files(noisy_dir)
     else:
@@ -121,7 +122,7 @@ def get_dataset(noisy_dir, sample_rate, channels):
             "Skipping denoising.")
         return None
     return biodenoising.denoiser.audio.Audioset(files, with_path=True,
-                    sample_rate=sample_rate, channels=channels, convert=True)
+                    sample_rate=sample_rate, channels=channels, convert=True, resample_to_sr=not keep_original_sr)
 
 
 def _estimate_and_save(model, noisy_signals, filenames, out_dir, sample_rate, args):
@@ -225,7 +226,7 @@ def denoise(args, model=None, local_out_dir=None):
     else:
         out_dir = args.out_dir
     
-    dset = get_dataset(os.path.join(args.noisy_dir), sample_rate, channels)
+    dset = get_dataset(os.path.join(args.noisy_dir), sample_rate, channels, args.keep_original_sr)
     if dset is None:
         return
     loader = biodenoising.denoiser.distrib.loader(dset, batch_size=1, shuffle=False)
@@ -238,7 +239,7 @@ def denoise(args, model=None, local_out_dir=None):
         pendings = []
         for data in iterator:
             # Get batch data
-            noisy_signals, filenames = data
+            noisy_signals, filenames, _ = data
             noisy_signals = noisy_signals.to(args.device)
             if args.device == 'cpu' and args.num_workers > 1:
                 pendings.append(

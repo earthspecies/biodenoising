@@ -178,6 +178,6 @@ class Audioset(torch.utils.data.Dataset):
         if nframes > out.shape[-1]:
             out = repeat_and_pad(out, self.length, repeat_prob=self.repeat_prob, random_repeat=self.random_repeat, random_pad=self.random_pad, random_obj=self.random_obj)
         if self.with_path:
-            return out, filename
+            return out, filename, sr
         else:
             return out

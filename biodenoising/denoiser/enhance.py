@@ -152,7 +152,7 @@ def enhance(args, model=None, local_out_dir=None, experiment_logger=None):
         for i,data in enumerate(iterator):
             # Get batch data
             if len(data) > 1 and isinstance(data[1][0], str):
-                noisy_signals, filenames = data
+                noisy_signals, filenames, _ = data
             else:
                 filenames = str(i)
             noisy_signals = noisy_signals.to(args.device)

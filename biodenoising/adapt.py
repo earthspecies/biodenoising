@@ -458,7 +458,7 @@ def denoise(args, step=0):
         pendings = []
         for data in iterator:
             # Get batch data
-            noisy_signals, filenames = data
+            noisy_signals, filenames, _ = data
             noisy_signals = noisy_signals.to(args.device)
             if args.device == 'cpu' and args.num_workers > 1:
                 if step<args.steps:
