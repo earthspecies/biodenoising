@@ -11,7 +11,7 @@ name = 'biodenoising'
 description = "Animal vocalization denoising"
 
 requires-python = '>=3.8.0'
-version = "0.2.0-1"
+version = "0.3.0"
 authors = [
   { name="Marius Miron", email="info@mariusmiron.com" },
 ]
@@ -39,9 +39,16 @@ license = { file="LICENSE" }
 Homepage = 'https://github.com/earthspecies/biodenoising'
 Issues = 'https://github.com/earthspecies/biodenoising/issues'
 
+[project.scripts]
+biodenoise = "denoise:main"
+biodenoise-adapt = "adapt:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["biodenoising","biodenoising.adapt","biodenoising.denoiser","biodenoising.datasets","biodenoising.conf"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
+
+[tool.setuptools]
+py-modules = ["denoise", "adapt"]
