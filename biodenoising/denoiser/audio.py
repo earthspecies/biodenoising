@@ -165,7 +165,10 @@ class Audioset(torch.utils.data.Dataset):
         else:
             out, sr = torchaudio.load(filename, offset=offset, num_frames=nframes)
             
+<<<<<<< HEAD
         target_sr = self.sample_rate or sr
+=======
+>>>>>>> marius/fixes
         target_channels = self.channels or out.shape[0]
         if self.resample_to_sr and sr != self.resample_to_sr:
             target_sr = self.resample_to_sr
@@ -178,6 +181,10 @@ class Audioset(torch.utils.data.Dataset):
         if nframes > out.shape[-1]:
             out = repeat_and_pad(out, self.length, repeat_prob=self.repeat_prob, random_repeat=self.random_repeat, random_pad=self.random_pad, random_obj=self.random_obj)
         if self.with_path:
+<<<<<<< HEAD
             return out, filename
+=======
+            return out, filename, sr
+>>>>>>> marius/fixes
         else:
             return out

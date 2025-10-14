@@ -41,6 +41,7 @@ parser.add_argument('--revecho', type=float, default=0,help='revecho probability
 parser.add_argument("--use_top", default=1., type=float, help="use the top ratio of files for training, sorted by their rms")
 parser.add_argument('--num_valid', type=float, default=0,help='the number of files to use for validation')
 parser.add_argument('--antialiasing', action="store_true",help="use an antialiasing filter when time scaling back")
+parser.add_argument('--keep_original_sr', action="store_true",help="keep the original sample rate of the audio rather than the model sample rate")
 parser.add_argument("--force_sample_rate", default=0, type=int, help="Force the model to take samples of this sample rate")
 parser.add_argument("--time_scale_factor", default=0, type=int, help="If the model has a different sample rate, play the audio slower or faster with this factor. If force_sample_rate this automatically changes.")
 parser.add_argument('--noise_reduce', action="store_true",help="use noisereduce preprocessing")
@@ -48,8 +49,9 @@ parser.add_argument('--amp_scale', action="store_true",help="scale to the amplit
 parser.add_argument('--interactive', action="store_true",help="pause at each step to allow the user to delete some files and continue")
 parser.add_argument("--window_size", type=int, default=0,
                     help="size of the window for continuous processing")
+parser.add_argument('--selection_table', action="store_true", help="Enable event masking via selection tables (csv/tsv/txt) located next to audio files.")
 parser.add_argument('--device', default="cuda")
-parser.add_argument('--dry', type=float, default=0,
+parser.add_argument('--dry', type=float, default=0.1,
                     help='dry/wet knob coefficient. 0 is only denoised, 1 only input signal.')
 parser.add_argument('--num_workers', type=int, default=5)
 parser.add_argument('--annotations', action="store_true", default=False, 
@@ -76,10 +78,12 @@ def main(args):
     
     return model
 
-
-if __name__ == "__main__":
+def main() -> None:
     args = parser.parse()
     if args.method == 'biodenoising16k_dns48':
         args.biodenoising16k_dns48 = True
-    
     main(args)
+
+
+if __name__ == "__main__":
+    main()
