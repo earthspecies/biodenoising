@@ -39,9 +39,16 @@ license = { file="LICENSE" }
 Homepage = 'https://github.com/earthspecies/biodenoising'
 Issues = 'https://github.com/earthspecies/biodenoising/issues'
 
+[project.scripts]
+biodenoise = "denoise:main"
+biodenoise-adapt = "adapt:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["biodenoising","biodenoising.adapt","biodenoising.denoiser","biodenoising.datasets","biodenoising.conf"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
+
+[tool.setuptools]
+py-modules = ["denoise", "adapt"]

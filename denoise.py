@@ -121,7 +121,7 @@ def write(wav, filename, sr=16_000):
 
 def get_dataset(noisy_dir, sample_rate, channels, keep_original_sr):
     resample_to_sr = sample_rate if not keep_original_sr else None
-    if args.noisy_dir:
+    if noisy_dir:
         files = biodenoising.denoiser.audio.find_audio_files(noisy_dir)
     else:
         logger.warning(
@@ -312,8 +312,12 @@ def denoise(args, model=None, local_out_dir=None):
 
 
 
-if __name__ == "__main__":
+def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(stream=sys.stderr, level=args.verbose)
     logger.debug(args)
     denoise(args, local_out_dir=args.out_dir)
+
+
+if __name__ == "__main__":
+    main()

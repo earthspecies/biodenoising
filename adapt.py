@@ -78,10 +78,12 @@ def main(args):
     
     return model
 
-
-if __name__ == "__main__":
+def main() -> None:
     args = parser.parse()
     if args.method == 'biodenoising16k_dns48':
         args.biodenoising16k_dns48 = True
-    
     main(args)
+
+
+if __name__ == "__main__":
+    main()

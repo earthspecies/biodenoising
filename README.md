@@ -8,9 +8,68 @@ The proposed model is based on the Demucs architecture, originally proposed for 
 
 We publish the pre-print on [arXiv](https://arxiv.org/abs/2410.03427).
 
-## Colab
+## Quick start
 
-If you want to play with the pretrained model inside colab for instance, start from this [Colab Example for Biodenoising](https://colab.research.google.com/drive/1Gc1tCe0MqAabViIgA8zGWm5KLVrEbRzg?usp=sharing).
+- **Install (from PyPI)**
+
+```bash
+pip install biodenoising
+```
+
+- **Install (from source, editable)**
+
+```bash
+git clone https://github.com/earthspecies/biodenoising
+cd biodenoising
+pip install -r requirements.txt
+pip install -e .
+```
+
+- **Denoise a folder (writes enhanced WAVs)**
+
+```bash
+biodenoise \
+  --method biodenoising16k_dns48 \
+  --noisy_dir /path/to/noisy_audio \
+  --out_dir   /path/to/output_dir \
+  --device cuda
+```
+
+- **Adapt the model to your domain/dataset (multi-step fine-tuning)**
+
+```bash
+biodenoise-adapt \
+  --method biodenoising16k_dns48 \
+  --noisy_dir /path/to/noisy_audio \
+  --out_dir   /path/to/output_dir \
+  --steps 3 \
+  --epochs 10 \
+  --device cuda
+```
+
+Notes:
+- **--noisy_dir**: directory with your input audio files
+- **--out_dir**: destination directory for outputs
+- **--steps / --epochs (adapt)**: control adaptation passes and training epochs per step
+ - **--keep_original_sr**: keep the original audio sample rate instead of resampling to the model rate (for high frequency vocalizations e.g. bats, belugas)
+ - **--selection_table**: enable event-based masking using selection tables (csv/tsv/txt) next to audio files
+
+## New features
+
+- **Domain adaptation with `adapt.py`**: Fine-tune the pretrained `biodenoising16k_dns48` model on your own recordings using pseudo-clean targets generated from your data. This multi-step procedure (configure with `--steps` and `--epochs`) adapts the model to your target domain/dataset and can improve performance when the target acoustics differ from the original training data.
+
+- **Event-aware processing with `--selection_table`**: When annotations (selection tables) are available next to your audio files, enabling `--selection_table` will restrict processing to annotated events. This can:
+  - Improve denoising quality by removing the background outside the vocalizations.
+  - Improve adaptation quality by using event-restricted targets and extracting the noise between events.
+
+## Colab and Notebooks
+
+Notebooks in `scripts/`:
+
+- `scripts/Biodenoising_demo.ipynb` — [Open in Colab](https://colab.research.google.com/drive/1Gc1tCe0MqAabViIgA8zGWm5KLVrEbRzg?usp=sharing)
+- `scripts/biodenoising_demo_long_audio.ipynb` — [Open in Colab](https://colab.research.google.com/drive/1DYzIC43s2f2-jeH3Qn29lFhSqqBnJjVi?usp=sharing)
+- `scripts/Biodenoising_denoise_zip_demo.ipynb` — [Open in Colab](https://colab.research.google.com/drive/19kT5JBUvXucYHdUpL0_nGKRvD2QlGgif?usp=sharing)
+- `scripts/Biodenoising_adapt_zip_demo.ipynb` — [Open in Colab](https://colab.research.google.com/drive/1Ypii2no6BtWgPvH7JikcaoNNQO48WN8v?usp=sharing)
 
 ## Installation
 
@@ -34,59 +93,25 @@ cd biodenoising
 pip install -r requirements.txt  
 ```
 
-### Troubleshooting bad quality in separation
-Biodenoising inherits the drawbacks of the denoiser implementation: 
-
-`denoiser` can introduce distortions for very high level of noises.
-Audio can become crunchy if your computer is not fast enough to process audio in real time.
-In that case, you will see an error message in your terminal warning you that `denoiser`
-is not processing audio fast enough. You can try exiting all non required applications.
-
-`denoiser` was tested on a Mac Book Pro with an 2GHz quadcore Intel i5 with DDR4 memory.
-You might experience issues with DDR3 memory. In that case you can trade overall latency for speed by processing multiple frames at once. To do so, run
-```
-python -m biodenoising.denoiser.live -f 2
-```
-You can increase to `-f 3` or more if needed, but each increase will add 16ms of extra latency.
 
 ## Usage
 
-Generating the denoised files can be done by:
+Once the package is installed generating the denoised files can be done by:
 
 ```
-python -m biodenoising.denoiser.denoise --input=<path to the dir with the noisy files> --output=<path to store enhanced files>
+biodenoise \
+  --method biodenoising16k_dns48 \
+  --noisy_dir <path to the dir with the noisy files> \
+  --out_dir   <path to store enhanced files>
 ```
-Notice, you can either provide `noisy_dir` or `noisy_json` for the test data.
-Note that the path given to `--model_path` should be obtained from one of the `best.th` file, not `checkpoint.th`.
-It is also possible to use pre-trained model, using  `--biodenoising16k_dns48`.
- For more details regarding possible arguments, please see:
+Notes:
+- You can either provide `--noisy_dir` (directory) or extend the tool to accept JSONs as in legacy flows.
+- The path given to `--model_path` (when overriding the pretrained) should point to a `best.th` file, not `checkpoint.th`.
+- Use `--selection_table` to restrict processing to annotated events; use `--keep_original_sr` to keep the input sampling rate.
+For more details regarding possible arguments, see the CLI help:
+
 ```
-usage: python -m biodenoising.denoiser.denoise [-h] [-m MODEL_PATH | --biodenoising16k_dns48 ]
-                        [--device DEVICE] [--dry DRY]
-                        [--num_workers NUM_WORKERS] [--streaming]
-                        [--output OUT_DIR] [--batch_size BATCH_SIZE] [-v]
-                        [--input NOISY_DIR] [--selection_table] [--keep_original_sr]
-
-Animal vocalization denoising using biodenoising - Generate enhanced files
-
-optional arguments:
-  -h, --help                  show this help message and exit
-  -m MODEL_PATH, --model_path MODEL_PATH
-                              Path to local trained model.
-  --biodenoising16k_dns48     Use pre-trained real time H=48 model trained on biodenoising-datasets.
-  --device DEVICE
-  --dry DRY                   dry/wet knob coefficient. 0 is only input signal, 1
-                              only denoised.
-  --num_workers NUM_WORKERS
-  --streaming                 true streaming evaluation for biodenoising
-  --output OUT_DIR            directory putting enhanced wav files
-  --batch_size BATCH_SIZE
-                              batch size
-  -v, --verbose               more loggging
-  --input NOISY_DIR
-                              directory including noisy wav files
-  --selection_table           Enable event masking via selection tables (csv/tsv/txt) located next to audio files
-  --keep_original_sr          Keep the original sample rate instead of resampling to model's sample rate
+biodenoise --help
 ```
 
 ### Training
@@ -114,7 +139,7 @@ Biodenoising is a generic tool that may fail in some cases. In order to improve 
 #### Basic Usage
 
 ```bash
-python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/noisy/audio/ --out_dir /path/to/output/directory/
+python adapt.py --method biodenoising16k_dns48 --noisy_dir /path/to/noisy/audio/ --out_dir /path/to/output/directory/ --steps 3 --epochs 10
 ```
 
 #### Advanced Options
