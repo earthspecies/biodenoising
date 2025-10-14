@@ -14,7 +14,7 @@ URL = 'https://github.com/earthspecies/biodenoising'
 EMAIL = 'info@mariusmiron.com'
 AUTHOR = 'Marius Miron'
 REQUIRES_PYTHON = '>=3.8.0'
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 HERE = Path(__file__).parent
 

@@ -69,7 +69,7 @@ parser.add_argument('--annotations_extension', type=str, default=".csv",
 parser.add_argument('--processed_dir', type=str, default=None, 
                     help="Directory for storing preprocessed audio segments")
 
-def main(args):
+def run_adaptation_main(args):
     logging.basicConfig(stream=sys.stderr, level=args.verbose)
     logger.debug(args)
     
@@ -82,7 +82,7 @@ def main() -> None:
     args = parser.parse()
     if args.method == 'biodenoising16k_dns48':
         args.biodenoising16k_dns48 = True
-    main(args)
+    run_adaptation_main(args)
 
 
 if __name__ == "__main__":
