@@ -51,7 +51,7 @@ parser.add_argument("--window_size", type=int, default=0,
                     help="size of the window for continuous processing")
 parser.add_argument('--selection_table', action="store_true", help="Enable event masking via selection tables (csv/tsv/txt) located next to audio files.")
 parser.add_argument('--device', default="cuda")
-parser.add_argument('--dry', type=float, default=0,
+parser.add_argument('--dry', type=float, default=0.1,
                     help='dry/wet knob coefficient. 0 is only denoised, 1 only input signal.')
 parser.add_argument('--num_workers', type=int, default=5)
 parser.add_argument('--annotations', action="store_true", default=False, 

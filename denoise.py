@@ -32,7 +32,7 @@ def add_flags(parser):
     """
     biodenoising.denoiser.pretrained.add_model_flags(parser)
     parser.add_argument('--device', default="cuda")
-    parser.add_argument('--dry', type=float, default=0,
+    parser.add_argument('--dry', type=float, default=0.1,
                         help='dry/wet knob coefficient. 0 is only denoised, 1 only input signal.')
     parser.add_argument('--num_workers', type=int, default=5)
     parser.add_argument('--streaming', action="store_true",
