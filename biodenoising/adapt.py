@@ -16,14 +16,11 @@ from pathlib import Path
 import argparse
 import sys
 import yaml
-<<<<<<< HEAD
-=======
 from .selection_table import (
     build_mask_from_events,
     find_selection_table_for,
     load_events_seconds,
 )
->>>>>>> marius/fixes
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +128,6 @@ def lowpass(wav, sample_rate, cutoff=20):
     wav = scipy.signal.lfilter(b,a,wav)
     return wav
 
-<<<<<<< HEAD
-=======
 def _ensure_int_sr(value):
     """Return a Python int sampling rate from various scalar-like types.
 
@@ -173,7 +168,6 @@ def _ensure_int_sr(value):
     # Fallback
     return int(value)
 
->>>>>>> marius/fixes
 def highpass(wav, sample_rate, cutoff=20):
     [b,a] = scipy.signal.butter(4,cutoff, fs=sample_rate, btype='high')
     wav = scipy.signal.lfilter(b,a,wav)
@@ -225,33 +219,17 @@ def get_dataset(noisy_dir, sample_rate, channels, args=None):
             "Skipping denoising.")
         return None
     
-<<<<<<< HEAD
-    # Set resample_to_sr based on arguments
-    resample_to_sr = None
-    if args is not None:
-        if (hasattr(args, 'force_sample_rate') and args.force_sample_rate == 0) or \
-           (hasattr(args, 'time_scale_factor') and args.time_scale_factor == 0):
-            resample_to_sr = sample_rate
-=======
     # Set resample_to_sr based on keep_original_sr (mirror denoise.py)
     resample_to_sr = None
     if args is not None:
         keep_original = getattr(args, 'keep_original_sr', False)
         resample_to_sr = None if keep_original else sample_rate
->>>>>>> marius/fixes
 
     return denoiser.audio.Audioset(files, with_path=True,
                     sample_rate=sample_rate, channels=channels, 
                     convert=True, resample_to_sr=resample_to_sr)
 
 
-<<<<<<< HEAD
-def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_rate, args):
-    ### process
-    if args.noise_reduce:
-        noisy_signals = noisy_signals[0,0].to('cpu').numpy()  
-        noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=sample_rate)
-=======
 def _compute_norms_from_events(signal: torch.Tensor, events, sample_rate: int):
     """
     Compute RMS norms for each (start, end) in seconds using the provided signal.
@@ -304,16 +282,12 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
     if args.noise_reduce:
         noisy_signals = noisy_signals[0,0].to('cpu').numpy()  
         noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=save_sr)
->>>>>>> marius/fixes
         noisy_signals = torch.from_numpy(noisy_signals[None,None,:]).to(args.device).float()
     
     ### Forward
     estimate = get_estimate(model, noisy_signals, args)
 
     if args.transform == 'none':
-<<<<<<< HEAD
-        save_wavs(estimate, filenames, os.path.join(out_dir,args.experiment), sr=sample_rate)
-=======
         # Apply selection table mask if requested
         if getattr(args, 'selection_table', False):
             masked_estimates = []
@@ -326,7 +300,6 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
                 masked_estimates.append(estimate[i:i+1] * mask)
             estimate = torch.cat(masked_estimates, dim=0) if masked_estimates else estimate
         save_wavs(estimate, filenames, os.path.join(out_dir,args.experiment), sr=save_sr)
->>>>>>> marius/fixes
     else:
         estimate_sum = estimate
         #noisy_signals = noisy_signals[None,None,:].float()
@@ -340,11 +313,7 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
             estimate = get_estimate(model, noisy_signals, args)
             
             if args.antialiasing:
-<<<<<<< HEAD
-                estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), sample_rate, cutoff=np.power(2, i*(-0.5))*sample_rate/2)).to(args.device).float()
-=======
                 estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), save_sr, cutoff=np.power(2, i*(-0.5))*save_sr/2)).to(args.device).float()
->>>>>>> marius/fixes
                 
             ### transform back
             ### time scaling
@@ -359,14 +328,6 @@ def _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_ra
                 estimate_sum += estimate_write
                 
             #save_wavs(estimate_write, filenames, os.path.join(out_dir,args.method+'_'+args.transform + str(i)) , sr=sample_rate)
-<<<<<<< HEAD
-                    
-        save_wavs(estimate_sum/4., filenames, os.path.join(out_dir,args.experiment), sr=sample_rate)
-        
-    return [],[]        
-
-def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step, sample_rate, args):
-=======
         
         # Average aggregated estimate
         estimate_out = estimate_sum/4.
@@ -387,34 +348,22 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
 
 def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step, sample_rate, data_sample_rate, args):
     save_sr = _ensure_int_sr(data_sample_rate) if args.keep_original_sr else int(sample_rate)
->>>>>>> marius/fixes
     original_noisy_signals = noisy_signals.clone()
     revecho=denoiser.augment.RevEcho(0.99)
     max_value = noisy_signals.abs().max()
     noisy_signals = noisy_signals[0,0].to('cpu').numpy()  
     if args.noise_reduce:
-<<<<<<< HEAD
-        noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=sample_rate)
-
-    ### remove dc component
-    noisy_signals = highpass(noisy_signals, sample_rate, cutoff=args.highpass)
-=======
         noisy_signals = noisereduce.reduce_noise(y=noisy_signals, sr=save_sr)
 
     ### remove dc component
     noisy_signals = highpass(noisy_signals, save_sr, cutoff=args.highpass)
->>>>>>> marius/fixes
     noisy_signals = torch.from_numpy(noisy_signals[None,None,:]).to(args.device).float()
     
     if args.time_scale_factor != 0:
         noisy_signals_fwd = noisy_signals
         if args.antialiasing and args.time_scale_factor>0:
             ## anti-aliasing
-<<<<<<< HEAD
-            noisy_signals_fwd = torch.from_numpy(lowpass(noisy_signals.to('cpu').numpy(), sample_rate, cutoff=sample_rate//(args.time_scale_factor*4))).to(args.device).float()
-=======
             noisy_signals_fwd = torch.from_numpy(lowpass(noisy_signals.to('cpu').numpy(), save_sr, cutoff=save_sr//(args.time_scale_factor*4))).to(args.device).float()
->>>>>>> marius/fixes
         noisy_signals_fwd = time_scaling(noisy_signals_fwd, np.power(2, args.time_scale_factor*0.5))
     else:
         noisy_signals_fwd = noisy_signals
@@ -425,79 +374,15 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
     if args.time_scale_factor != 0:
         if args.antialiasing and args.time_scale_factor>0:
             ## anti-aliasing
-<<<<<<< HEAD
-            estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), sample_rate, cutoff=sample_rate//(args.time_scale_factor*4))).to(args.device).float()
-        estimate = time_scaling(estimate, np.power(2, -args.time_scale_factor*0.5))
-        ### remove low frequency artifacts
-        estimate = torch.from_numpy(highpass(estimate.to('cpu').numpy(), sample_rate)).to(args.device).float()
-=======
             estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), save_sr, cutoff=save_sr//(args.time_scale_factor*4))).to(args.device).float()
         estimate = time_scaling(estimate, np.power(2, -args.time_scale_factor*0.5))
         ### remove low frequency artifacts
         estimate = torch.from_numpy(highpass(estimate.to('cpu').numpy(), save_sr)).to(args.device).float()
->>>>>>> marius/fixes
     
     csv_path = os.path.join(out_subdir,args.experiment+'_detection')
     os.makedirs(csv_path, exist_ok=True)
     full_estimate_noise = noisy_signals - estimate
     if args.transform == 'none':
-<<<<<<< HEAD
-        norms, start_end = get_start_end(estimate.to('cpu').numpy().squeeze(), sample_rate)
-        res = []
-        res_noise = []
-        if len(start_end) > 0:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-                for i in range(len(start_end)):
-                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
-    
-            ### save wav
-            noise = original_noisy_signals-estimate
-            if args.noise_dir is None:
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                if args.noisy_estimate:
-                    ### trim the first 0.5 and the last 0.5 of the noise
-                    if noise.shape[-1] > sample_rate * 2:
-                        trim_samples = int(sample_rate * 1)
-                        noise = noise[..., trim_samples:-trim_samples]                        
-                    noise = enhance_noise(noise, estimate)  
-                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
-                    res_noise.append([allfnoise[0],1., out_subdir])
-            if args.revecho > 0:
-                estimate = revecho(torch.stack((estimate,estimate)))[0]
-            if args.amp_scale:
-                estimate = estimate * max_value / estimate.abs().max()
-            estimate_chunks, estimate_noise_chunks = get_chunks(estimate, noise, sample_rate, start_end, duration=args.segment, compute_noise=True)
-            for j, chunk in enumerate(estimate_chunks):
-                allf = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=sample_rate)
-                res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise_chunks is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise_chunks):
-                    allfnoise = save_wavs(chunk, filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=sample_rate)
-                    res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
-            return res, res_noise    
-        else:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-            if args.noise_dir is None:
-                noise = original_noisy_signals-estimate
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
-                res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
-            return res,res_noise
-=======
         if getattr(args, 'selection_table', False):
             # Use selection tables to derive start_end and norms
             events = load_events_seconds(find_selection_table_for(filenames[0]))
@@ -603,18 +488,13 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                     allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
                     res_noise.append([allfnoise[0],1., os.path.join(out_subdir,args.experiment+'_noise')])
                 return res,res_noise
->>>>>>> marius/fixes
 
     else:
         ### we sum all the results here
         estimate_sum = estimate
         # estimates = []
         for i in range(1,4): ### animal sounds sit usually in higher frequencies; shift them down
-<<<<<<< HEAD
-            noisy_signals = torch.from_numpy(highpass(noisy_signals.to('cpu').numpy().squeeze(), sample_rate)).to(args.device)
-=======
             noisy_signals = torch.from_numpy(highpass(noisy_signals.to('cpu').numpy().squeeze(), save_sr)).to(args.device)
->>>>>>> marius/fixes
             noisy_signals = noisy_signals[None,None,:].float()
             ### transform
             ### time scaling
@@ -625,11 +505,7 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                         
             ## anti-aliasing
             if i>0 and args.antialiasing:
-<<<<<<< HEAD
-                estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), sample_rate, cutoff=sample_rate//(i*4))).to(args.device).float()
-=======
                 estimate = torch.from_numpy(lowpass(estimate.to('cpu').numpy(), save_sr, cutoff=save_sr//(i*4))).to(args.device).float()
->>>>>>> marius/fixes
             
             ### transform back
             ### time scaling
@@ -645,63 +521,6 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
         
         res = []
         res_noise = []
-<<<<<<< HEAD
-        norms, start_end = get_start_end(estimate_sum.to('cpu').numpy().squeeze(), sample_rate)
-        if len(start_end) > 0:
-            ### replace nans with minimum value
-            norms[np.isnan(norms)] = norms.min()
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-                for i in range(len(start_end)):
-                    f.write(str(start_end[i][0]) + ',' + str(start_end[i][1]) + ',' + str(norms[i]) + '\n')
-    
-            ### save wav
-            noise = original_noisy_signals-estimate
-            if args.noise_dir is None:
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                if args.noisy_estimate:
-                    ### trim the first 0.5 and the last 0.5 of the noise
-                    if noise.shape[-1] > sample_rate * 2:
-                        trim_samples = int(sample_rate * 1)
-                        noise = noise[..., trim_samples:-trim_samples]                        
-                    noise = enhance_noise(noise, estimate)  
-                    allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
-                    res_noise.append([allfnoise[0],1., out_subdir])
-            if args.revecho > 0:
-                estimate_sum = revecho(torch.stack((estimate_sum,estimate_sum)))[0]
-            if args.amp_scale:
-                estimate_sum = estimate_sum * max_value / estimate_sum.abs().max()
-            estimate_sum_chunks, estimate_noise_chunks = get_chunks(estimate_sum, noise/4., sample_rate, start_end, duration=args.segment, compute_noise=True)
-            for j, chunk in enumerate(estimate_sum_chunks):
-                allf = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment), '_'+str(j), sr=sample_rate)
-                res.append([allf[0],norms[j], os.path.join(out_subdir,args.experiment)])
-            if estimate_noise_chunks is not None and args.noise_dir is None:
-                for j, chunk in enumerate(estimate_noise_chunks):
-                    allfnoise = save_wavs(chunk/4., filenames, os.path.join(out_subdir,args.experiment+'_noise'), '_'+str(j), sr=sample_rate)
-                    res_noise.append([allfnoise[0],1-np.array(norms).max(), os.path.join(out_subdir,args.experiment+'_noise')])
-            return res, res_noise    
-        else:
-            ### save csv
-            filename = os.path.join(csv_path, os.path.basename(filenames[0]).rsplit(".", 1)[0]) + '.csv'
-            with open(filename, 'w') as f:
-                f.write('start,end,rms\n')
-            if args.noise_dir is None:
-                noise = original_noisy_signals-estimate
-                for i in range(3):
-                    signal = get_estimate(model, noise, args)
-                    noise = noise - signal
-                noise = 3 * noise  
-                noise = noise/noise.abs().max() if noise.abs().max() > 1 else noise
-                allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=sample_rate)
-                res_noise.append([allfnoise[0],1., out_subdir])
-            return res,res_noise
-=======
         if getattr(args, 'selection_table', False):
             events = load_events_seconds(find_selection_table_for(filenames[0]))
             
@@ -806,7 +625,6 @@ def _estimate_and_save_chunks(model, noisy_signals, filenames, out_subdir, step,
                     allfnoise = save_wavs(noise, filenames, os.path.join(out_subdir,args.experiment+'_noise'), sr=save_sr)
                     res_noise.append([allfnoise[0],1., out_subdir])
                 return res,res_noise
->>>>>>> marius/fixes
 
 def get_experiment_code(args,step):
     experiment = args.method + '_pretrained' if step==0 else args.method + '_step'+str(step)
@@ -855,38 +673,22 @@ def denoise(args, step=0):
         pendings = []
         for data in iterator:
             # Get batch data
-<<<<<<< HEAD
-            noisy_signals, filenames = data
-=======
             noisy_signals, filenames, data_sample_rate = data
->>>>>>> marius/fixes
             noisy_signals = noisy_signals.to(args.device)
             if args.device == 'cpu' and args.num_workers > 1:
                 if step<args.steps:
                     pendings.append(
                         pool.submit(_estimate_and_save_chunks,
-<<<<<<< HEAD
-                                    model, noisy_signals, filenames, out_dir, step, sample_rate, args))
-                else:
-                    pendings.append(
-                        pool.submit(_estimate_and_save,
-                                    model, noisy_signals, filenames, out_dir, step, sample_rate, args))
-=======
                                     model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args))
                 else:
                     pendings.append(
                         pool.submit(_estimate_and_save,
                                     model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args))
->>>>>>> marius/fixes
             else:
                 res_noise = None
                 if args.window_size > 0:
                     import asteroid
-<<<<<<< HEAD
-                    window_size_samples = int(args.window_size * sample_rate )
-=======
                     window_size_samples = int(args.window_size * _ensure_int_sr(data_sample_rate))
->>>>>>> marius/fixes
                     hop_size_samples = int(window_size_samples//4)
                     ola_model = asteroid.dsp.overlap_add.LambdaOverlapAdd(
                         nnet=model,  # function to apply to each segment.
@@ -899,16 +701,6 @@ def denoise(args, step=0):
                     )
                     ola_model.window = ola_model.window.to(args.device)
                     if step<args.steps:
-<<<<<<< HEAD
-                        res, res_noise = _estimate_and_save_chunks(ola_model, noisy_signals, filenames, out_dir, step, sample_rate, args)
-                    else:
-                        res, res_noise = _estimate_and_save(ola_model, noisy_signals, filenames, out_dir, step, sample_rate, args)
-                else:
-                    if step<args.steps:
-                        res, res_noise = _estimate_and_save_chunks(model, noisy_signals, filenames, out_dir, step, sample_rate, args)
-                    else:
-                        res, res_noise = _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_rate, args)
-=======
                         res, res_noise = _estimate_and_save_chunks(ola_model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args)
                     else:
                         res, res_noise = _estimate_and_save(ola_model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args)
@@ -917,7 +709,6 @@ def denoise(args, step=0):
                         res, res_noise = _estimate_and_save_chunks(model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args)
                     else:
                         res, res_noise = _estimate_and_save(model, noisy_signals, filenames, out_dir, step, sample_rate, data_sample_rate, args)
->>>>>>> marius/fixes
                 if res_noise is not None and len(res)>0:
                     npos += 1
                     for r in res:
@@ -1005,8 +796,6 @@ def get_start_end(wav, sample_rate, smoothing_window=3, db_treshold=-40, min_dur
     return norms, start_end
 
 
-<<<<<<< HEAD
-=======
 def extract_noise_between_events(noise, start_end, sample_rate, window_type='triangular'):
     """
     Extract noise segments between events and stitch them together with a window.
@@ -1104,7 +893,6 @@ def extract_noise_between_events(noise, start_end, sample_rate, window_type='tri
     return stitched
 
 
->>>>>>> marius/fixes
 def get_chunks(audio, noise, sample_rate, start_end, duration=4., compute_noise=True, merge=False, amplitude_augment=False):
     duration_samples = duration * sample_rate
     offset = int(duration_samples / 2 )
@@ -1574,9 +1362,6 @@ def run_adaptation(args):
             args.model_path = args.checkpoint_file
             args.lr = args.lr * 0.5
     
-<<<<<<< HEAD
-=======
     # Final denoising step with selection table filtering if enabled
->>>>>>> marius/fixes
     denoise(args, step=step+1)  # Final denoising step, no need to return model
 
