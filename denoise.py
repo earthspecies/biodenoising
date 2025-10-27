@@ -269,7 +269,7 @@ def denoise(args, model=None, local_out_dir=None):
     else:
         out_dir = args.out_dir
     
-    dset = get_dataset(os.path.join(args.noisy_dir), sample_rate, channels, args.keep_original_sr)
+    dset = get_dataset(args.noisy_dir, sample_rate, channels, args.keep_original_sr)
     if dset is None:
         return
     loader = biodenoising.denoiser.distrib.loader(dset, batch_size=1, shuffle=False)
