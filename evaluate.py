@@ -109,7 +109,7 @@ def _evaluate(clean_signals, noisy_signals, denoised_signals, filenames, data_di
 def process(args):
     out_dir = args.data_dir
     assert os.path.exists(os.path.join(args.data_dir,'clean')), f"Directory {os.path.join(args.data_dir,'clean')} does not exist"
-    subdirs = [name for name in os.listdir(os.path.join(args.data_dir,'denoised')) if os.path.isdir(os.path.join(os.path.join(args.data_dir,'denoised'), name))]
+    subdirs = [name for name in os.listdir(os.path.join(args.data_dir,'denoised')) if os.path.isdir(os.path.join(args.data_dir,'denoised', name))]
     os.makedirs(os.path.join(args.data_dir, 'results'), exist_ok=True)
     for subdir in sorted(subdirs):
         print(f"Evaluating {subdir}")

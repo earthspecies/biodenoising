@@ -998,7 +998,7 @@ def generate_json(args, step=0):
     write_json(json_dict, 'clean.json', args)
     
     if args.noise_dir is not None:
-        noise_dirs_dict = {'train':[os.path.join(args.noise_dir,f) for f in os.listdir(os.path.join(args.noise_dir))]}
+        noise_dirs_dict = {'train':[os.path.join(args.noise_dir,f) for f in os.listdir(args.noise_dir)]}
         json_dict_noise = to_json_list(noise_dirs_dict)
     else:
         noise_dirs_dict = {}
@@ -1033,8 +1033,8 @@ def train(args,step=0):
     #     args.low_snr = 0 
     #     args.high_snr = 0
     
-    train_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'train'))
-    valid_path = os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid')) if os.path.exists(os.path.join(os.path.join(args.out_dir, 'egs', args.experiment, 'valid', 'clean.json'))) else None
+    train_path = os.path.join(args.out_dir, 'egs', args.experiment, 'train')
+    valid_path = os.path.join(args.out_dir, 'egs', args.experiment, 'valid') if os.path.exists(os.path.join(args.out_dir, 'egs', args.experiment, 'valid', 'clean.json')) else None
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -1319,13 +1319,17 @@ def run_adaptation(args):
         denoise(args, step=step)  # No need to capture the returned model
         generate_json(args, step=step)
         if step > 0:
-            args.continue_from = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-            args.checkpoint_file = os.path.basename(args.checkpoint_file).replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
+            # Get the basename of the checkpoint file (without the directory path)
+            checkpoint_basename = os.path.basename(args.checkpoint_file)
+            args.continue_from = os.path.join(args.out_dir, 'checkpoints', checkpoint_basename)
+            args.checkpoint_file = checkpoint_basename.replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
         else:
             args.continue_from = ''
             args.checkpoint_file = args.checkpoint_file.replace('.th', '_step0.th')
         args.checkpoint_file = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-        args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
+        # Ensure history_file is just the basename before constructing the path
+        history_basename = os.path.basename(args.history_file) if args.history_file else 'history.json'
+        args.history_file = os.path.join(args.out_dir, 'checkpoints', history_basename)
         train(args, step=step)
         args.model_path = args.checkpoint_file
         args.lr = args.lr * 0.5
@@ -1351,13 +1355,17 @@ def run_adaptation(args):
             denoise(args, step=step)  # No need to capture the returned model
             generate_json(args, step=step)
             if step > 0:
-                args.continue_from = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-                args.checkpoint_file = os.path.basename(args.checkpoint_file).replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
+                # Get the basename of the checkpoint file (without the directory path)
+                checkpoint_basename = os.path.basename(args.checkpoint_file)
+                args.continue_from = os.path.join(args.out_dir, 'checkpoints', checkpoint_basename)
+                args.checkpoint_file = checkpoint_basename.replace('_step'+str(step-1)+'.th', '_step'+str(step)+'.th')
             else:
                 args.continue_from = ''
                 args.checkpoint_file = args.checkpoint_file.replace('.th', '_step0.th')
             args.checkpoint_file = os.path.join(args.out_dir, 'checkpoints', args.checkpoint_file)
-            args.history_file = os.path.join(args.out_dir, 'checkpoints', args.history_file)
+            # Ensure history_file is just the basename before constructing the path
+            history_basename = os.path.basename(args.history_file) if args.history_file else 'history.json'
+            args.history_file = os.path.join(args.out_dir, 'checkpoints', history_basename)
             train(args, step=step)
             args.model_path = args.checkpoint_file
             args.lr = args.lr * 0.5
