@@ -1173,6 +1173,28 @@ def train(args,step=0):
     solver = denoiser.solver.Solver(data, model, optimizer, args, rng=rng, rngnp=rngnp, rngth=rngth, seed=args.seed, experiment_logger=experiment_logger, scheduler=scheduler)
     solver.train()
 
+def _infer_column(
+    available_columns, keywords, fallback_name
+):  # pragma: no cover - simple helper
+    """
+    Infer a column name from a list of available columns based on keywords.
+
+    Parameters
+    ----------
+    available_columns : Iterable
+        Column names available in the annotation table.
+    keywords : list[str]
+        Lowercase substrings to look for in the column names.
+    fallback_name : Any
+        Value to return if no suitable column is found.
+    """
+    cols_lower = {str(c).lower(): c for c in available_columns}
+    for name_lower, original in cols_lower.items():
+        if any(k in name_lower for k in keywords):
+            return original
+    return fallback_name
+
+
 def preprocess_with_annotations(args):
     """
     Preprocess audio files using annotation files.
@@ -1201,14 +1223,49 @@ def preprocess_with_annotations(args):
         return
     
     logger.info(f"Found {len(audio_files)} audio files")
-    
+
+    # Resolve which annotation extension to use when none is explicitly given.
+    # Sequentially:
+    #   1) If any *.csv exists in noisy_dir, use .csv for all files.
+    #   2) Else, if any *.tsv exists, use .tsv.
+    #   3) Else, if any *.txt exists, use .txt.
+    # This avoids mixing extensions and matches the "check sequentially" requirement.
+    ext_arg = getattr(args, "annotations_extension", None)
+    resolved_ext = None
+    if ext_arg and str(ext_arg).lower() != "auto":
+        resolved_ext = ext_arg
+    else:
+        base_dir = Path(args.noisy_dir)
+        for auto_ext in [".csv", ".tsv", ".txt"]:
+            if any(base_dir.glob(f"*{auto_ext}")):
+                resolved_ext = auto_ext
+                break
+        if resolved_ext is None:
+            logger.warning(
+                f"No annotation files with extensions .csv, .tsv, or .txt found in "
+                f"{args.noisy_dir}; will attempt per-file lookup for all three."
+            )
     processed_count = 0
     for audio_path in audio_files:
         # Find annotation file with the same base name
         base_name = audio_path.stem
-        annotation_path = Path(args.noisy_dir) / f"{base_name}{args.annotations_extension}"
-        
-        if not annotation_path.exists():
+
+        # If we resolved a single extension, only try that.
+        # Otherwise, fall back to per-file probing of all three.
+        candidate_paths = []
+        if resolved_ext is not None:
+            candidate_paths.append(Path(args.noisy_dir) / f"{base_name}{resolved_ext}")
+        else:
+            for auto_ext in [".csv", ".tsv", ".txt"]:
+                candidate_paths.append(Path(args.noisy_dir) / f"{base_name}{auto_ext}")
+
+        annotation_path = None
+        for cand in candidate_paths:
+            if cand.exists():
+                annotation_path = cand
+                break
+
+        if annotation_path is None:
             logger.warning(f"No annotation file found for {audio_path}")
             continue
         
@@ -1221,11 +1278,53 @@ def preprocess_with_annotations(args):
             logger.error(f"Error loading audio file {audio_path}: {e}")
             continue
         
-        # Load annotations
+        # Load annotations (support both CSV and TSV by letting pandas infer the separator)
         try:
-            annotations = pd.read_csv(annotation_path)
+            # sep=None with engine="python" lets pandas automatically detect comma, tab, etc.
+            annotations = pd.read_csv(annotation_path, sep=None, engine="python")
         except Exception as e:
             logger.error(f"Error loading annotation file {annotation_path}: {e}")
+            continue
+
+        begin_col = args.annotations_begin_column
+        end_col = args.annotations_end_column
+
+        cols = list(annotations.columns)
+        # Treat missing/empty/'auto' or non-existent names as "infer"
+        if (
+            begin_col is None
+            or str(begin_col).strip() == ""
+            or str(begin_col).lower() == "auto"
+            or begin_col not in cols
+        ):
+            inferred_begin = _infer_column(cols, ["begin", "start"], None)
+            if inferred_begin is not None:
+                logger.info(
+                    f"Inferred annotations begin column '{inferred_begin}' "
+                    f"for file {annotation_path}"
+                )
+                begin_col = inferred_begin
+
+        if (
+            end_col is None
+            or str(end_col).strip() == ""
+            or str(end_col).lower() == "auto"
+            or end_col not in cols
+        ):
+            inferred_end = _infer_column(cols, ["end", "stop"], None)
+            if inferred_end is not None:
+                logger.info(
+                    f"Inferred annotations end column '{inferred_end}' "
+                    f"for file {annotation_path}"
+                )
+                end_col = inferred_end
+
+        # Check if required columns exist after inference
+        if begin_col is None or end_col is None:
+            logger.error(
+                "Could not infer begin/end columns from annotation file "
+                f"{annotation_path}. Available columns: {list(annotations.columns)}"
+            )
             continue
         
         # Filter annotations by label if specified
@@ -1235,17 +1334,12 @@ def preprocess_with_annotations(args):
                 logger.warning(f"No annotations with label {args.annotations_label_value} found in {annotation_path}")
                 continue
         
-        # Check if required columns exist
-        if args.annotations_begin_column not in annotations.columns or args.annotations_end_column not in annotations.columns:
-            logger.error(f"Required columns not found in {annotation_path}")
-            continue
-        
         # Extract segments
         audio_duration = waveform.shape[1] / sample_rate
         segments = []
         for _, row in annotations.iterrows():
-            start_time = float(row[args.annotations_begin_column])
-            end_time = float(row[args.annotations_end_column])
+            start_time = float(row[begin_col])
+            end_time = float(row[end_col])
             
             if start_time >= end_time or start_time < 0 or end_time > audio_duration:
                 logger.warning(f"Invalid segment {start_time}-{end_time} in {annotation_path}")
@@ -1373,3 +1467,76 @@ def run_adaptation(args):
     # Final denoising step with selection table filtering if enabled
     denoise(args, step=step+1)  # Final denoising step, no need to return model
 
+
+# ---------------------------------------------------------------------------
+# Basic self-tests for annotation utilities
+# ---------------------------------------------------------------------------
+
+def test_infer_column_begin_end():
+    """
+    Simple sanity check for _infer_column keyword matching.
+
+    This is intentionally lightweight so it can run in a regular pytest
+    session without additional fixtures.
+    """
+    cols = ["Label", "Begin_Time", "End_Time"]
+    begin = _infer_column(cols, ["begin", "start"], None)
+    end = _infer_column(cols, ["end", "stop"], None)
+    assert begin == "Begin_Time"
+    assert end == "End_Time"
+
+
+def test_infer_column_case_insensitive_and_fallback():
+    """_infer_column should be case-insensitive and return fallback if needed."""
+    cols = ["label", "START_SEC", "STOP_SEC"]
+    begin = _infer_column(cols, ["begin", "start"], None)
+    end = _infer_column(cols, ["end", "stop"], None)
+    assert begin == "START_SEC"
+    assert end == "STOP_SEC"
+
+    # No matching keyword → fallback returned
+    cols2 = ["Label", "Time"]
+    begin2 = _infer_column(cols2, ["begin", "start"], "Begin")
+    assert begin2 == "Begin"
+
+
+def test_pandas_parses_csv_with_auto_sep(tmp_path=None):
+    """
+    Ensure that pd.read_csv with sep=None, engine='python' correctly
+    parses a comma-separated annotations file.
+    """
+    import tempfile
+
+    if tmp_path is None:
+        tmp_dir = tempfile.mkdtemp(prefix="biodenoising_test_")
+        tmp_path = Path(tmp_dir)
+
+    csv_path = tmp_path / "example.csv"
+    csv_path.write_text("Label,Begin,End\nCall,1.0,2.0\n", encoding="utf-8")
+
+    df = pd.read_csv(csv_path, sep=None, engine="python")
+    assert list(df.columns) == ["Label", "Begin", "End"]
+    assert df.iloc[0]["Label"] == "Call"
+    assert float(df.iloc[0]["Begin"]) == 1.0
+    assert float(df.iloc[0]["End"]) == 2.0
+
+
+def test_pandas_parses_tsv_with_auto_sep(tmp_path=None):
+    """
+    Ensure that pd.read_csv with sep=None, engine='python' correctly
+    parses a tab-separated annotations file.
+    """
+    import tempfile
+
+    if tmp_path is None:
+        tmp_dir = tempfile.mkdtemp(prefix="biodenoising_test_")
+        tmp_path = Path(tmp_dir)
+
+    tsv_path = tmp_path / "example.tsv"
+    tsv_path.write_text("Label\tBegin\tEnd\nCall\t3.0\t4.0\n", encoding="utf-8")
+
+    df = pd.read_csv(tsv_path, sep=None, engine="python")
+    assert list(df.columns) == ["Label", "Begin", "End"]
+    assert df.iloc[0]["Label"] == "Call"
+    assert float(df.iloc[0]["Begin"]) == 3.0
+    assert float(df.iloc[0]["End"]) == 4.0
